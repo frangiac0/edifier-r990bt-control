@@ -10,6 +10,15 @@ Timeline (also printed when run):
   1:44  three short beeps at -45 dB, 1 s apart
   1:47  end
 
+gate_test_2.wav goes lower and waits longer:
+  0:00  reference tone, -20 dB, 5 s
+  0:05  steady tone stepping down every 8 s: -60, -65, -70, -75, -80 dB
+  0:45  silence, 60 s
+  1:45  three short beeps at -40 dB
+  1:48  silence, 120 s
+  3:48  three short beeps at -50 dB
+  3:51  end
+
 Usage: python tools/make_gate_test.py [output_dir]
 """
 
@@ -54,14 +63,25 @@ def build() -> list[float]:
     return s
 
 
-if __name__ == "__main__":
-    out = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
-    out.mkdir(parents=True, exist_ok=True)
-    path = out / "gate_test.wav"
-    samples = build()
+def build_2() -> list[float]:
+    s = tone(5, -20)
+    for level in (-60, -65, -70, -75, -80):
+        s += tone(8, level)
+    s += silence(60) + beeps(-40) + silence(120) + beeps(-50)
+    return s
+
+
+def write(path: Path, samples: list[float]) -> None:
     with wave.open(str(path), "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(RATE)
         w.writeframes(b"".join(struct.pack("<h", round(32767 * x)) for x in samples))
     print(path, f"{len(samples) / RATE:.0f} s")
+
+
+if __name__ == "__main__":
+    out = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
+    out.mkdir(parents=True, exist_ok=True)
+    write(out / "gate_test.wav", build())
+    write(out / "gate_test_2.wav", build_2())
