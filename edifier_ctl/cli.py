@@ -35,11 +35,13 @@ async def resolve_address(address: str | None) -> str:
     out("Buscando parlantes Edifier (10 s)...")
     found = await scan()
     if not found:
-        raise SystemExit(
+        msg = (
             "No se encontro ningun parlante Edifier por BLE.\n"
             "Proba poniendo musica por Bluetooth en el parlante y volve a intentar, "
             "o usa 'scan --all' para ver todos los dispositivos."
         )
+        out(msg)
+        raise SystemExit(1)
     device, name, _, rssi = found[0]
     out(f"Usando {name or '(sin nombre)'} {device.address} (senal {rssi} dBm)")
     return device.address

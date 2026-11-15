@@ -6,13 +6,39 @@ Control del parlante **Edifier R990BT** desde la computadora por Bluetooth LE, s
 
 ## Estado
 
-**Fase 1: diagnóstico.** Todavía no hay interfaz gráfica. Esta versión trae una herramienta de línea de comandos para confirmar que el R990BT usa el mismo protocolo que otros modelos Edifier compatibles con ConneX y para averiguar sus códigos de entrada.
-
 | Fase | Objetivo | Estado |
 |---|---|---|
-| 1 | Conectar, leer estado y obtener los códigos de entrada | en curso |
-| 2 | Captura del tráfico de ConneX, solo si la fase 1 no alcanza | pendiente |
-| 3 | App de bandeja para Windows con selector de entrada | pendiente |
+| 1 | Conectar, leer estado y obtener los códigos de entrada | hecho |
+| 2 | App con ventana e ícono en la bandeja de Windows | en prueba |
+| 3 | Instalador o `.exe` para no depender de Python | pendiente |
+
+Valores confirmados en un R990BT con firmware 1.0.2:
+
+| Función | Consulta | Cambio | Valores |
+|---|---|---|---|
+| Entrada | `AA EC 61 00 00 F7` | `AA EC 62 00 02 06 <entrada> <chk>` | `01` Bluetooth, `02` Line 1, `03` Line 2 |
+| Volumen | `AA EC 66 00 00 FC` | `AA EC 67 00 01 <vol> <chk>` | 0 a 16 |
+| Ecualizador | `AA EC D5 00 00 6B` | `AA EC C4 00 01 <preset> <chk>` | `00`, `01`, `02` (nombres sin confirmar) |
+
+Para el cambio de entrada, el formato está deducido del M60 y del M90; en el R990BT solo se verificó la consulta.
+
+## Usar la app
+
+Después de la instalación (ver más abajo), hacé doble clic en **`Edifier R990BT.pyw`**. Se abre una ventana con:
+
+- **Entrada:** Bluetooth, Line 1 y Line 2.
+- **Volumen:** control deslizante y botones `-` / `+`.
+- **Ecualizador:** los tres presets del parlante.
+
+Al cerrar la ventana, la app sigue en la bandeja del sistema, junto al reloj. Desde el menú del ícono se puede cambiar la entrada sin abrir la ventana. Para salir del todo, elegí **Salir** en ese menú.
+
+La primera vez la app busca el parlante y guarda su dirección en `%APPDATA%\edifier-r990bt-control\config.json`. Si cambiás de parlante, borrá ese archivo.
+
+Si doble clic no abre nada, corré esto en una consola en la carpeta del proyecto para ver el error:
+
+```bash
+py -m edifier_ctl.gui
+```
 
 ## Cómo funciona
 
@@ -46,7 +72,7 @@ La consulta `0x61` devuelve `<grupo> <entrada>` y el comando `0x62` cambia la en
 py -m pip install -r requirements.txt
 ```
 
-## Diagnóstico paso a paso
+## Herramienta de diagnóstico
 
 Antes de empezar:
 

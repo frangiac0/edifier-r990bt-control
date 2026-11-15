@@ -78,6 +78,10 @@ class EdifierClient:
         self._write_with_response = "write" in write_char.properties
         await self._client.start_notify(service.get_characteristic(NOTIFY_CHAR), self._handle)
 
+    @property
+    def is_connected(self) -> bool:
+        return self._client.is_connected
+
     async def disconnect(self) -> None:
         if self._client.is_connected:
             await self._client.disconnect()
