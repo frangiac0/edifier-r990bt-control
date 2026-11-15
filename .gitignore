@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+diagnostico.txt
+*.log
+*.cfa
+bugreport*.zip
