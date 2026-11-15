@@ -7,7 +7,9 @@ import sys
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from . import r990bt
+from dataclasses import asdict
+
+from . import config, keepalive, r990bt, web
 from .controller import Controller, State
 from .i18n import t
 
@@ -51,6 +53,9 @@ class App:
         self._state = State()
         self._dragging_volume = False
         self.tray = None
+        self.keepalive = keepalive.KeepAlive()
+        self.web: web.WebRemote | None = None
+        self._qr_window = None
 
         self._build()
         self._set_window_icon()
@@ -58,6 +63,7 @@ class App:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(100, self._pump)
         self._setup_tray()
+        self._restore_settings()
         self.controller.start()
 
     # --- Window layout ---
@@ -124,6 +130,37 @@ class App:
             b.pack(side="left", padx=(0, 12))
             self.eq_buttons.append(b)
 
+        ttk.Separator(frame).pack(fill="x", pady=(18, 12))
+
+        ka_row = ttk.Frame(frame)
+        ka_row.pack(fill="x")
+        self.ka_var = tk.BooleanVar(value=False)
+        self.ka_check = ttk.Checkbutton(ka_row, text=t("keepalive"), variable=self.ka_var, command=self._on_keepalive_ui)
+        self.ka_check.pack(side="left")
+        self.ka_level_var = tk.StringVar(value=f"{keepalive.DEFAULT_LEVEL_DB} dB")
+        self.ka_level = ttk.Combobox(
+            ka_row, textvariable=self.ka_level_var, state="readonly", width=8,
+            values=[f"{level} dB" for level in keepalive.LEVELS_DB],
+        )
+        self.ka_level.pack(side="right")
+        self.ka_level.bind("<<ComboboxSelected>>", lambda e: self._on_keepalive_ui())
+        ttk.Label(frame, text=t("keepalive_hint"), style="Muted.TLabel", wraplength=300).pack(anchor="w", pady=(4, 0))
+        if not keepalive.available():
+            self.ka_check.state(["disabled"])
+            self.ka_level.state(["disabled"])
+
+        ttk.Label(frame, text=t("phone"), style="Section.TLabel").pack(anchor="w", pady=(16, 0))
+        self.web_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(frame, text=t("phone_enable"), variable=self.web_var, command=self._on_web_ui).pack(anchor="w", pady=(6, 0))
+        wrow = ttk.Frame(frame)
+        wrow.pack(fill="x", pady=(6, 0))
+        self.web_url_var = tk.StringVar(value="")
+        self.web_url = ttk.Entry(wrow, textvariable=self.web_url_var, state="readonly", font=("Segoe UI", 9))
+        self.web_url.pack(side="left", fill="x", expand=True)
+        self.btn_qr = ttk.Button(wrow, text=t("show_qr"), command=self._show_qr)
+        self.btn_qr.pack(side="left", padx=(8, 0))
+        self.btn_qr.state(["disabled"])
+
         self.btn_power = ttk.Button(frame, text=t("power_off"), command=self._confirm_power_off)
         self.btn_power.pack(anchor="e", pady=(18, 0))
 
@@ -173,6 +210,9 @@ class App:
                     self.root.deiconify()
                     self.root.lift()
                     self.root.focus_force()
+                elif kind == "keepalive":
+                    enabled, level = data
+                    self._set_keepalive(enabled, level)
                 elif kind == "quit":
                     self._quit()
                     return
@@ -202,6 +242,92 @@ class App:
         for w in (self.btn_down, self.btn_up, self.volume_scale, self.btn_power, *self.eq_buttons):
             w.state(["!disabled"] if enabled else ["disabled"])
 
+    # --- Settings, keep-alive and phone remote ---
+
+    def _restore_settings(self) -> None:
+        level = config.get("keepalive_level", keepalive.DEFAULT_LEVEL_DB)
+        self._set_keepalive(bool(config.get("keepalive", False)), level, save=False)
+        if config.get("web_enabled", False):
+            self.web_var.set(True)
+            self._on_web_ui()
+
+    def _on_keepalive_ui(self) -> None:
+        level = int(self.ka_level_var.get().split()[0])
+        self._set_keepalive(self.ka_var.get(), level)
+
+    def _set_keepalive(self, enabled: bool, level: int | None, save: bool = True) -> None:
+        self.keepalive.set(enabled, level)
+        self.ka_var.set(self.keepalive.enabled)
+        self.ka_level_var.set(f"{self.keepalive.level_db} dB")
+        if save:
+            config.set_values(keepalive=self.keepalive.enabled, keepalive_level=self.keepalive.level_db)
+
+    def _web_state(self) -> dict:
+        data = asdict(self._state)
+        data.update(
+            keepalive=self.keepalive.enabled,
+            keepalive_level=self.keepalive.level_db,
+            keepalive_available=keepalive.available(),
+        )
+        return data
+
+    def _on_web_ui(self) -> None:
+        if self.web_var.get():
+            key = config.get("web_key") or web.new_key()
+            port = int(config.get("web_port", web.DEFAULT_PORT))
+            target = web.RemoteTarget(
+                get_state=self._web_state,
+                set_source=lambda src: self.controller.set_source(src),
+                set_volume=lambda v: self.controller.set_volume(v),
+                set_eq=lambda p: self.controller.set_eq(p),
+                set_keepalive=lambda en, lvl: self._events.put(("keepalive", (en, lvl))),
+                power_off=lambda: self.controller.power_off(),
+            )
+            self.web = web.WebRemote(target, key=key, port=port)
+            try:
+                self.web.start()
+            except OSError as exc:
+                self.web = None
+                self.web_var.set(False)
+                messagebox.showerror("Edifier R990BT", t("web_error", error=exc), parent=self.root)
+                return
+            config.set_values(web_enabled=True, web_key=key, web_port=port)
+            self.web_url_var.set(self.web.url)
+            self.btn_qr.state(["!disabled"])
+        else:
+            if self.web:
+                self.web.stop()
+                self.web = None
+            config.set_values(web_enabled=False)
+            self.web_url_var.set("")
+            self.btn_qr.state(["disabled"])
+            if self._qr_window is not None:
+                self._qr_window.destroy()
+                self._qr_window = None
+
+    def _show_qr(self) -> None:
+        if not self.web:
+            return
+        if self._qr_window is not None and self._qr_window.winfo_exists():
+            self._qr_window.lift()
+            return
+        win = tk.Toplevel(self.root)
+        win.title(t("qr_title"))
+        win.configure(bg="white")
+        win.resizable(False, False)
+        url = self.web.url
+        try:
+            import qrcode
+            from PIL import ImageTk
+
+            img = qrcode.make(url, box_size=8, border=2).get_image()
+            win._photo = ImageTk.PhotoImage(img)
+            tk.Label(win, image=win._photo, bg="white").pack(padx=16, pady=(16, 8))
+        except Exception:
+            pass
+        tk.Label(win, text=url, bg="white", fg=FG, font=("Segoe UI", 9)).pack(padx=16, pady=(0, 16))
+        self._qr_window = win
+
     def _confirm_power_off(self) -> None:
         if messagebox.askyesno("Edifier R990BT", t("power_off_confirm"), icon="warning", parent=self.root):
             self.controller.power_off()
@@ -226,6 +352,9 @@ class App:
             self._quit()
 
     def _quit(self) -> None:
+        self.keepalive.stop()
+        if self.web:
+            self.web.stop()
         if self.tray is not None:
             self.tray.stop()
         self.controller.stop()
@@ -240,7 +369,12 @@ def self_test() -> int:
     import bleak  # noqa: F401
     from bleak import BleakClient, BleakScanner  # noqa: F401
 
+    import qrcode  # noqa: F401
+
+    from . import web  # noqa: F401
+
     if sys.platform == "win32":
+        import winsound  # noqa: F401
         import bleak.backends.winrt.client  # noqa: F401
         import bleak.backends.winrt.scanner  # noqa: F401
     make_icon_image()

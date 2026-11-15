@@ -43,3 +43,13 @@ def forget_address() -> None:
     data = load_config()
     if data.pop("address", None) is not None:
         save_config(data)
+
+
+def get(key: str, default=None):
+    return load_config().get(key, default)
+
+
+def set_values(**values) -> None:
+    data = load_config()
+    data.update(values)
+    save_config(data)

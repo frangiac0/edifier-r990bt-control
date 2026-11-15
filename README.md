@@ -21,6 +21,20 @@ Requirements: Windows 10 or 11 with Bluetooth 4.0 or later. Most laptops have it
 - **EQ:** the speaker's three presets.
 - **Turn off:** powers the speaker down. It can only be turned back on with its knob; the app reconnects by itself when it is.
 
+### Prevent auto-mute
+
+The R990BT switches its amplifier off when the audio stream stops or the signal drops below a very low level, and switches it back on when sound returns. In films this cuts quiet ambience and the start of sounds after a silence.
+
+**Prevent auto-mute** makes the app play a 25 Hz tone at -60, -50 or -40 dBFS through the default Windows output. That is practically inaudible but keeps the stream alive and the amplifier on. Start with -50 dB and go up only if the speaker still mutes.
+
+It only affects audio played by this PC, over Bluetooth or a PC-to-RCA cable. It cannot help a TV or other device plugged into the RCA inputs, because the PC has no way to inject a signal into that cable.
+
+### Phone remote
+
+Tick **Allow control from a phone on this Wi-Fi** and press **Show QR**. Scanning the code opens a page with the same controls on the phone. The PC must be on with the app running.
+
+The link includes a random access key, so other devices on the network cannot use it without the QR. The server listens on port 8765. The first time, Windows asks whether to allow the app on the network: allow it on **private** networks.
+
 Closing the window keeps the app running in the system tray, next to the clock. The tray menu switches inputs without opening the window. Choose **Quit** there to exit.
 
 The first time, the app searches for the speaker and saves its address in `%APPDATA%\edifier-r990bt-control\config.json`. Delete that file to pair the app with a different speaker.

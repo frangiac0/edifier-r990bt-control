@@ -11,7 +11,7 @@ $common = @("--noconfirm", "--onefile", "--icon", "assets\icon.ico",
             "--collect-all", "bleak", "--collect-all", "winrt",
             "--paths", ".")
 
-Invoke-Checked $py -m PyInstaller @common --windowed --name EdifierR990BT --hidden-import pystray._win32 packaging\app.py
+Invoke-Checked $py -m PyInstaller @common --windowed --name EdifierR990BT --hidden-import pystray._win32 --collect-submodules qrcode packaging\app.py
 Invoke-Checked $py -m PyInstaller @common --console --name edifier-cli packaging\cli.py
 
 # The app exe has no console, so check its exit code explicitly.

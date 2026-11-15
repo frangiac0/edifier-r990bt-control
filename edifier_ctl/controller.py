@@ -49,6 +49,10 @@ class Controller:
 
     # --- API for the GUI (any thread) ---
 
+    @property
+    def state(self) -> State:
+        return self._state
+
     def start(self) -> None:
         self._thread.start()
 
