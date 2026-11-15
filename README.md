@@ -9,7 +9,7 @@ Control del parlante **Edifier R990BT** desde la computadora por Bluetooth LE, s
 | Fase | Objetivo | Estado |
 |---|---|---|
 | 1 | Conectar, leer estado y obtener los códigos de entrada | hecho |
-| 2 | App con ventana e ícono en la bandeja de Windows | en prueba |
+| 2 | App con ventana e ícono en la bandeja de Windows | hecho |
 | 3 | Instalador o `.exe` para no depender de Python | pendiente |
 
 Valores confirmados en un R990BT con firmware 1.0.2:
@@ -20,7 +20,7 @@ Valores confirmados en un R990BT con firmware 1.0.2:
 | Volumen | `AA EC 66 00 00 FC` | `AA EC 67 00 01 <vol> <chk>` | 0 a 16 |
 | Ecualizador | `AA EC D5 00 00 6B` | `AA EC C4 00 01 <preset> <chk>` | `00`, `01`, `02` (nombres sin confirmar) |
 
-Para el cambio de entrada, el formato está deducido del M60 y del M90; en el R990BT solo se verificó la consulta.
+Las tres funciones se verificaron en el parlante: consulta, cambio y lectura posterior. Al cambiar de entrada, el parlante manda además notificaciones `0xC3`, que corresponden al estado del enlace de audio Bluetooth.
 
 ## Usar la app
 

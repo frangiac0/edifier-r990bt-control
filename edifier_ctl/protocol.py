@@ -29,6 +29,7 @@ OP_VOLUME_SET = 0x67
 OP_EQ_GET = 0xD5
 OP_EQ_SET = 0xC4
 OP_MEDIA = 0xC2
+OP_A2DP_STATE = 0xC3
 
 OPCODE_NAMES = {
     OP_CAPABILITIES: "capacidades",
@@ -41,6 +42,7 @@ OPCODE_NAMES = {
     OP_EQ_GET: "ecualizador (consulta)",
     OP_EQ_SET: "ecualizador (cambio)",
     OP_MEDIA: "reproduccion",
+    OP_A2DP_STATE: "estado del audio Bluetooth",
 }
 
 
