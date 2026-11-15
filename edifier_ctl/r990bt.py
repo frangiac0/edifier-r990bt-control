@@ -1,4 +1,4 @@
-"""Valores especificos del Edifier R990BT (firmware 1.0.2), obtenidos con la herramienta de diagnostico."""
+"""Edifier R990BT specific values (firmware 1.0.2), found with the diagnostic tool."""
 
 SOURCE_GROUP = 0x06
 
@@ -10,8 +10,8 @@ SOURCES = {
 
 VOLUME_MAX = 16
 
-# El R990BT tiene tres ecualizadores predefinidos. Los nombres y el orden de los
-# codigos todavia no estan verificados contra la app ConneX.
+# The R990BT has three preset EQs. Which code is which ConneX preset
+# (music, movie, game) has not been confirmed yet.
 EQ_PRESETS = {
     0x00: "Preset 1",
     0x01: "Preset 2",

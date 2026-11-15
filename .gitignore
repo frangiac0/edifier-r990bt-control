@@ -6,3 +6,7 @@ diagnostico.txt
 *.cfa
 bugreport*.zip
 *.zip
+dist/
+build/
+*.spec
+diagnostics.txt

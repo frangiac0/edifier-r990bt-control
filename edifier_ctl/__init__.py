@@ -1,1 +1,3 @@
-"""Control por Bluetooth LE de parlantes Edifier R990BT."""
+"""Bluetooth LE control for Edifier R990BT speakers."""
+
+__version__ = "0.2.0"

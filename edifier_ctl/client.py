@@ -1,4 +1,4 @@
-"""Cliente BLE para parlantes Edifier compatibles con ConneX."""
+"""BLE client for ConneX-compatible Edifier speakers."""
 
 from __future__ import annotations
 
@@ -10,14 +10,14 @@ from bleak.backends.device import BLEDevice
 
 from . import protocol as p
 
-# En los modelos documentados el servicio de control es 4809xxxx-1a48-11e9-ab14-d663bd873d93
-# (xxxx cambia segun el modelo) y las caracteristicas son siempre estas dos.
+# On documented models the control service is 4809xxxx-1a48-11e9-ab14-d663bd873d93
+# (xxxx depends on the model) and the characteristics are always these two.
 SERVICE_SUFFIX = "-1a48-11e9-ab14-d663bd873d93"
 NOTIFY_CHAR = "48090001" + SERVICE_SUFFIX
 WRITE_CHAR = "48090002" + SERVICE_SUFFIX
 
 
-# UUID que anuncia el R990BT para que ConneX lo encuentre.
+# UUID the R990BT advertises so that ConneX can find it.
 ADVERTISED_UUIDS = {"0000d300-0000-1000-8000-00805f9b34fb"}
 
 
@@ -33,13 +33,13 @@ def looks_like_edifier(device: BLEDevice, adv) -> bool:
 
 
 async def find_speaker(timeout: float = 20.0) -> BLEDevice | None:
-    """Espera hasta encontrar el primer parlante Edifier. El parlante se anuncia de forma
-    intermitente, asi que conviene un tiempo largo; la busqueda corta apenas aparece."""
+    """Wait for the first Edifier speaker. The speaker advertises intermittently, so use a
+    long timeout; the search returns as soon as it shows up."""
     return await BleakScanner.find_device_by_filter(looks_like_edifier, timeout=timeout)
 
 
 async def scan(timeout: float = 10.0) -> list[tuple[BLEDevice, str, list[str], int]]:
-    """Devuelve (dispositivo, nombre, uuids anunciados, rssi) de los candidatos Edifier."""
+    """Return (device, name, advertised uuids, rssi) for Edifier candidates."""
     found = await BleakScanner.discover(timeout=timeout, return_adv=True)
     result = []
     for device, adv in found.values():
@@ -83,13 +83,13 @@ class EdifierClient:
         service = next((s for s in self._client.services if is_edifier_service(s.uuid)), None)
         if service is None:
             raise RuntimeError(
-                "Conectado, pero no aparece el servicio de control de Edifier. "
-                "Usa el comando 'gatt' para ver que servicios expone el parlante."
+                "Connected, but the Edifier control service is missing. "
+                "Run the 'gatt' command to see which services the speaker exposes."
             )
         self.service_uuid = service.uuid
         write_char = service.get_characteristic(WRITE_CHAR)
         if write_char is None or service.get_characteristic(NOTIFY_CHAR) is None:
-            raise RuntimeError(f"El servicio {service.uuid} no tiene las caracteristicas esperadas.")
+            raise RuntimeError(f"Service {service.uuid} lacks the expected characteristics.")
         self._write_with_response = "write" in write_char.properties
         await self._client.start_notify(service.get_characteristic(NOTIFY_CHAR), self._handle)
 
@@ -111,7 +111,7 @@ class EdifierClient:
         await self._client.write_gatt_char(WRITE_CHAR, data, response=self._write_with_response)
 
     async def request(self, opcode: int, payload: bytes = b"", timeout: float = 3.0, app: int = 0xEC) -> p.Frame | None:
-        """Manda un pedido y espera la primera respuesta con el mismo opcode."""
+        """Send a request and wait for the first reply with the same opcode."""
         while not self._queue.empty():
             self._queue.get_nowait()
         await self.send_raw(p.build(opcode, payload, app))
@@ -134,7 +134,7 @@ class EdifierClient:
                 lines.append(f"    Caracteristica {char.uuid}  [{', '.join(char.properties)}]")
         return lines
 
-    # --- Operaciones de alto nivel (formato tomado de otros modelos, sin verificar en R990BT) ---
+    # --- High-level operations ---
 
     async def get_source(self) -> tuple[int, int] | None:
         frame = await self.request(p.OP_SOURCE_GET)

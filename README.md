@@ -1,150 +1,153 @@
 # edifier-r990bt-control
 
-Control del parlante **Edifier R990BT** desde la computadora por Bluetooth LE, sin usar la perilla trasera ni el celular: cambio de entrada (Bluetooth, Line 1, Line 2) y, si el parlante lo admite, volumen y ecualizador.
+Control an **Edifier R990BT** speaker from a Windows PC over Bluetooth LE: switch inputs (Bluetooth, Line 1, Line 2), change the volume and pick an EQ preset without touching the rear knob or the phone app.
 
-> Proyecto no oficial, sin relación con Edifier. Usa un protocolo no documentado, descifrado por la comunidad a partir de la app EDIFIER ConneX. Usalo bajo tu responsabilidad.
+> Unofficial project, not affiliated with Edifier. It uses an undocumented protocol, reverse-engineered by the community from the EDIFIER ConneX app. Use at your own risk.
 
-## Estado
+![App window](assets/screenshot.png)
 
-| Fase | Objetivo | Estado |
-|---|---|---|
-| 1 | Conectar, leer estado y obtener los códigos de entrada | hecho |
-| 2 | App con ventana e ícono en la bandeja de Windows | hecho |
-| 3 | Instalador o `.exe` para no depender de Python | pendiente |
+## Download
 
-Valores confirmados en un R990BT con firmware 1.0.2:
+Grab `EdifierR990BT.exe` from the [latest release](../../releases/latest) and double-click it. No installation and no Python needed.
 
-| Función | Consulta | Cambio | Valores |
-|---|---|---|---|
-| Entrada | `AA EC 61 00 00 F7` | `AA EC 62 00 02 06 <entrada> <chk>` | `01` Bluetooth, `02` Line 1, `03` Line 2 |
-| Volumen | `AA EC 66 00 00 FC` | `AA EC 67 00 01 <vol> <chk>` | 0 a 16 |
-| Ecualizador | `AA EC D5 00 00 6B` | `AA EC C4 00 01 <preset> <chk>` | `00`, `01`, `02` (nombres sin confirmar) |
+Windows SmartScreen may warn that the app is from an unknown publisher, because the executable is not code-signed. Click **More info > Run anyway**.
 
-Las tres funciones se verificaron en el parlante: consulta, cambio y lectura posterior. Al cambiar de entrada, el parlante manda además notificaciones `0xC3`, que corresponden al estado del enlace de audio Bluetooth.
+Requirements: Windows 10 or 11 with Bluetooth 4.0 or later. Most laptops have it; desktop PCs may need a USB adapter.
 
-## Usar la app
+## Using the app
 
-Después de la instalación (ver más abajo), hacé doble clic en **`Edifier R990BT.pyw`**. Se abre una ventana con:
+- **Input:** Bluetooth, Line 1, Line 2.
+- **Volume:** slider and `-` / `+` buttons (0 to 16, the speaker's own scale).
+- **EQ:** the speaker's three presets.
 
-- **Entrada:** Bluetooth, Line 1 y Line 2.
-- **Volumen:** control deslizante y botones `-` / `+`.
-- **Ecualizador:** los tres presets del parlante.
+Closing the window keeps the app running in the system tray, next to the clock. The tray menu switches inputs without opening the window. Choose **Quit** there to exit.
 
-Al cerrar la ventana, la app sigue en la bandeja del sistema, junto al reloj. Desde el menú del ícono se puede cambiar la entrada sin abrir la ventana. Para salir del todo, elegí **Salir** en ese menú.
+The first time, the app searches for the speaker and saves its address in `%APPDATA%\edifier-r990bt-control\config.json`. Delete that file to pair the app with a different speaker.
 
-La primera vez la app busca el parlante y guarda su dirección en `%APPDATA%\edifier-r990bt-control\config.json`. Si cambiás de parlante, borrá ese archivo.
+The interface is in English, or in Spanish when Windows is set to Spanish. Set the environment variable `EDIFIER_LANG=en` or `EDIFIER_LANG=es` to force a language.
 
-Si doble clic no abre nada, corré esto en una consola en la carpeta del proyecto para ver el error:
+### Tips
+
+- **Close ConneX on your phone.** The speaker accepts only one control connection at a time.
+- **The speaker advertises intermittently.** If the app can't find it the first time, play something over Bluetooth for a few seconds. Once found, the app remembers it and reconnects on its own.
+
+## Command-line tool
+
+`edifier-cli.exe`, also in the release, does the same from a terminal, which makes it easy to call from scripts, AutoHotkey, Stream Deck and the like:
 
 ```bash
-py -m edifier_ctl.gui
+edifier-cli source line1
 ```
 
-## Cómo funciona
+```bash
+edifier-cli volume +2
+```
 
-El parlante tiene dos canales Bluetooth independientes:
+```bash
+edifier-cli eq 1
+```
 
-- **Bluetooth clásico (A2DP):** transporta el audio.
-- **Bluetooth LE:** recibe los comandos de control que usa la app ConneX.
+| Command | What it does |
+|---|---|
+| `source bt\|line1\|line2` | Switch input |
+| `volume [N\|+N\|-N]` | Show or set the volume |
+| `eq 0\|1\|2` | Select an EQ preset |
+| `info` | Show capabilities, name, firmware, input, volume and EQ |
+| `scan [--all]` | List nearby Edifier (or all) BLE devices |
+| `gatt` | List the speaker's GATT services |
+| `watch` | Print the active input while you turn the knob |
+| `send <opcode> [payload]` | Send a raw command (advanced) |
+| `forget` | Forget the saved speaker |
 
-Este programa usa solamente el segundo. En otros modelos de la familia (M60, M90, MR5BT), el control funciona con tramas como estas:
+Every command appends its output to `diagnostics.txt` in the current folder. Remove Bluetooth addresses before sharing that file.
+
+## How it works
+
+The speaker has two independent Bluetooth radios:
+
+- **Classic Bluetooth (A2DP)** carries the audio.
+- **Bluetooth LE** carries control commands. This is what ConneX, and this app, use.
+
+Commands are framed like this:
 
 ```text
-AA EC <opcode> <largo:2 bytes> <datos> <checksum>    pedido
-BB EC <opcode> <largo:2 bytes> <datos> <checksum>    respuesta
+AA EC <opcode> <length: 2 bytes> <payload> <checksum>    request
+BB EC <opcode> <length: 2 bytes> <payload> <checksum>    reply
 ```
 
-La consulta `0x61` devuelve `<grupo> <entrada>` y el comando `0x62` cambia la entrada. El grupo y los códigos de entrada cambian según el modelo, así que hay que leerlos del propio R990BT.
+The checksum is the low byte of the sum of all preceding bytes.
 
-## Requisitos
+### R990BT protocol reference
 
-- Windows 10 u 11 con Bluetooth 4.0 o superior. Casi todas las notebooks lo tienen; en una PC de escritorio puede hacer falta un adaptador USB.
-- Python 3.10 o superior.
+Verified on an R990BT with firmware 1.0.2. Each change was set, acknowledged and read back.
 
-## Instalación en Windows
+| | Value |
+|---|---|
+| BLE name | `EDIFIER BLE` |
+| Advertised UUID | `0000d300-0000-1000-8000-00805f9b34fb` |
+| GATT service | `4809d301-1a48-11e9-ab14-d663bd873d93` |
+| Notify characteristic | `48090001-1a48-11e9-ab14-d663bd873d93` |
+| Write characteristic | `48090002-1a48-11e9-ab14-d663bd873d93` |
 
-1. Instalá Python desde [python.org](https://www.python.org/downloads/). En el instalador, tildá **"Add python.exe to PATH"**.
-2. Descargá este repositorio con el botón verde **Code > Download ZIP** y descomprimilo.
-3. Abrí la carpeta descomprimida, hacé clic en la barra de direcciones del Explorador, escribí `cmd` y apretá Enter. Se abre una consola en esa carpeta.
-4. Instalá la dependencia:
+| Function | Query | Set | Values |
+|---|---|---|---|
+| Input | `AA EC 61 00 00 F7` → `<group> <input>` | `AA EC 62 00 02 06 <input> <chk>` | group `06`; `01` Bluetooth, `02` Line 1, `03` Line 2 |
+| Volume | `AA EC 66 00 00 FC` → `<max> <current>` | `AA EC 67 00 01 <vol> <chk>` | 0 to 16 |
+| EQ preset | `AA EC D5 00 00 6B` → `<preset>` | `AA EC C4 00 01 <preset> <chk>` | `00`, `01`, `02` (names not yet mapped) |
+| Name | `AA EC C9 00 00 5F` | | UTF-8 |
+| Firmware | `AA EC C6 00 00 5C` | | 3 bytes |
+| Capabilities | `AA EC D8 00 00 6E` | | 22 bytes |
+
+After an input change the speaker also sends `0xC3` notifications with the state of the Bluetooth audio link.
+
+Capabilities payload on the tested unit:
+
+```text
+00 00 01 02 01 01 01 00 00 00 01 01 0A 0F 01 00 00 22 00 03 00 00
+```
+
+## Running from source
+
+Requires Python 3.10 or later.
 
 ```bash
 py -m pip install -r requirements.txt
 ```
 
-## Herramienta de diagnóstico
-
-Antes de empezar:
-
-- **Cerrá la app ConneX en el celular**, o apagá el Bluetooth del celular. El parlante acepta un solo cliente de control a la vez.
-- En otros modelos, el parlante solo se anuncia por BLE mientras recibe audio por Bluetooth. Si no aparece, poné música desde la PC o desde el celular y volvé a intentar.
-
-### 1. Buscar el parlante
+Start the app (or double-click `Edifier R990BT.pyw`):
 
 ```bash
-py -m edifier_ctl scan
+py -m edifier_ctl.gui
 ```
 
-Si no aparece nada, listá todos los dispositivos BLE cercanos:
-
-```bash
-py -m edifier_ctl scan --all
-```
-
-### 2. Ver qué expone
-
-```bash
-py -m edifier_ctl gatt
-```
-
-Lo que importa es si aparece un servicio con la forma `4809xxxx-1a48-11e9-ab14-d663bd873d93`.
-
-### 3. Leer el estado
+Use the command-line tool:
 
 ```bash
 py -m edifier_ctl info
 ```
 
-### 4. Descubrir los códigos de entrada
+### Building the executables
+
+GitHub Actions builds both executables on every push and attaches them to a release when a `v*` tag is pushed. To build locally on Windows:
 
 ```bash
-py -m edifier_ctl watch
+powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 ```
 
-Con esto corriendo, girá o apretá la perilla del parlante para pasar por Bluetooth, Line 1 y Line 2. Esperá unos segundos en cada una y anotá qué código aparece para cada entrada. Terminá con `Ctrl+C`.
+The output lands in `dist\`.
 
-### 5. Probar el cambio de entrada
+## Other Edifier speakers
 
-Con el grupo y el código que mostró `watch` (en hexadecimal):
+The control service of ConneX speakers follows the pattern `4809xxxx-1a48-11e9-ab14-d663bd873d93`, so the scan, info and watch commands may work on other models. Input and EQ codes differ per model: run `watch` and turn the knob to find them. If the speaker doesn't answer at all, [docs/ANDROID_CAPTURE.md](docs/ANDROID_CAPTURE.md) explains how to capture what ConneX sends.
 
-```bash
-py -m edifier_ctl source <grupo> <entrada>
-```
+## Credits
 
-Ejemplo, si el grupo es `0F` y Line 1 es `02`:
+Community projects that documented the protocol on other models:
 
-```bash
-py -m edifier_ctl source 0F 02
-```
-
-La primera vez que encuentra el parlante, el programa guarda su dirección y después la usa directamente, porque el parlante se anuncia por BLE solo de a ratos. Para usar otro parlante, corré `py -m edifier_ctl forget`, o agregá `--address XX:XX:XX:XX:XX:XX` a cualquier comando.
-
-### Resultado
-
-Todo lo que muestra la herramienta se guarda también en `diagnostico.txt`, en la misma carpeta. Ese archivo es el que sirve para avanzar a la fase siguiente. Si lo vas a publicar, antes borrá las direcciones Bluetooth.
-
-## Si el diagnóstico no alcanza
-
-Si el parlante no responde a estas consultas, hay que capturar lo que manda ConneX desde un Android. Ver [docs/CAPTURA_ANDROID.md](docs/CAPTURA_ANDROID.md).
-
-## Referencias
-
-Proyectos comunitarios que documentaron el protocolo en otros modelos:
-
-- [kralonur/edifier-speakers-ble](https://github.com/kralonur/edifier-speakers-ble): M60 y M90, incluido el cambio de entrada.
-- [hifn123p/edifier-center](https://github.com/hifn123p/edifier-center): MR5BT, app de bandeja para Windows.
+- [kralonur/edifier-speakers-ble](https://github.com/kralonur/edifier-speakers-ble): M60 and M90, including input switching.
+- [hifn123p/edifier-center](https://github.com/hifn123p/edifier-center): MR5BT, Windows tray app.
 - [Devis99/omarchy-edifier-mr5](https://github.com/Devis99/omarchy-edifier-mr5): MR5.
 
-## Licencia
+## License
 
 MIT

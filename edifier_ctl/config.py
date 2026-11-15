@@ -1,4 +1,4 @@
-"""Configuracion compartida por la app y la herramienta de diagnostico."""
+"""Settings shared by the app and the diagnostic tool."""
 
 from __future__ import annotations
 

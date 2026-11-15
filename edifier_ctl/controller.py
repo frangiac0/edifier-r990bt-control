@@ -1,7 +1,7 @@
-"""Mantiene la conexion con el parlante en un hilo propio y expone operaciones simples.
+"""Keeps the speaker connection on its own thread and exposes simple operations.
 
-La interfaz grafica llama a los metodos publicos desde su hilo; todo el trabajo BLE
-ocurre en un bucle asyncio aparte. Los cambios de estado se informan por callback.
+The GUI calls the public methods from its own thread; all BLE work runs on a
+separate asyncio loop. State changes are reported through a callback.
 """
 
 from __future__ import annotations
@@ -16,16 +16,17 @@ from . import protocol as p
 from . import r990bt
 from . import config
 from .client import EdifierClient, find_speaker
+from .i18n import t
 
 POLL_SECONDS = 2.0
-# Despues de un cambio, el parlante tarda unos segundos en informar el valor nuevo.
+# After a change, the speaker takes a few seconds to report the new value.
 HOLD_SECONDS = 4.0
 RETRY_SECONDS = 5.0
 
 
 @dataclass(frozen=True)
 class State:
-    status: str = "Buscando parlante..."
+    status: str = ""
     connected: bool = False
     name: str | None = None
     source: int | None = None
@@ -45,7 +46,7 @@ class Controller:
         self._stopping = False
         self._hold: dict[str, float] = {}
 
-    # --- API para la interfaz (cualquier hilo) ---
+    # --- API for the GUI (any thread) ---
 
     def start(self) -> None:
         self._thread.start()
@@ -93,8 +94,8 @@ class Controller:
                 await self._session()
             except asyncio.CancelledError:
                 break
-            except Exception as exc:  # cualquier fallo BLE: reintentar
-                self._update(connected=False, status=f"Sin conexion ({type(exc).__name__}). Reintentando...")
+            except Exception as exc:  # any BLE failure: retry
+                self._update(connected=False, status=t("retrying", error=type(exc).__name__))
             finally:
                 if self._client:
                     try:
@@ -109,17 +110,17 @@ class Controller:
         saved = config.saved_address()
         if saved:
             return saved
-        self._update(connected=False, status="Buscando parlante...")
+        self._update(connected=False, status=t("searching"))
         device = await find_speaker(timeout=20.0)
         if device is None:
-            self._update(status="No se encontro el parlante. Pone musica por Bluetooth o cerra ConneX en el celular.")
+            self._update(status=t("not_found"))
         return device
 
     async def _session(self) -> None:
         address = await self._find_address()
         if address is None:
             return
-        self._update(status="Conectando...")
+        self._update(status=t("connecting"))
         client = EdifierClient(address)
         self._client = client
         await client.connect()
@@ -127,14 +128,14 @@ class Controller:
 
         name_frame = await self._request(p.OP_NAME)
         name = name_frame.payload.decode("utf-8", "replace").strip() if name_frame else "Edifier"
-        self._update(connected=True, name=name, status=f"Conectado a {name}")
+        self._update(connected=True, name=name, status=t("connected", name=name))
 
         misses = 0
         while not self._stopping:
             ok = await self._poll()
             misses = 0 if ok else misses + 1
             if misses >= 3 or not client.is_connected:
-                raise ConnectionError("el parlante dejo de responder")
+                raise ConnectionError("speaker stopped responding")
             await asyncio.sleep(POLL_SECONDS)
 
     async def _request(self, opcode: int, payload: bytes = b"") -> p.Frame | None:

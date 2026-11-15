@@ -1,18 +1,27 @@
-"""Ventana y icono de bandeja para controlar el Edifier R990BT."""
+"""Window and tray icon to control the Edifier R990BT."""
 
 from __future__ import annotations
 
 import queue
+import sys
 import tkinter as tk
 from tkinter import ttk
 
 from . import r990bt
 from .controller import Controller, State
+from .i18n import t
 
-try:  # El icono de bandeja es opcional: si falta pystray, la app funciona igual.
-    import pystray
+try:
     from PIL import Image, ImageDraw
-except Exception:  # falta la libreria o no hay soporte de bandeja
+except Exception:  # pragma: no cover
+    Image = None
+
+try:  # The tray icon is optional: without pystray the app still works.
+    import pystray
+
+    if Image is None:
+        pystray = None
+except Exception:  # library missing or no tray support
     pystray = None
 
 ACCENT = "#1f6feb"
@@ -44,13 +53,14 @@ class App:
         self.tray = None
 
         self._build()
+        self._set_window_icon()
         self.controller = Controller(on_state=lambda st: self._events.put(("state", st)))
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(100, self._pump)
         self._setup_tray()
         self.controller.start()
 
-    # --- Construccion de la ventana ---
+    # --- Window layout ---
 
     def _build(self) -> None:
         style = ttk.Style(self.root)
@@ -68,7 +78,7 @@ class App:
         self.status_var = tk.StringVar(value=self._state.status)
         ttk.Label(frame, textvariable=self.status_var, style="Muted.TLabel", wraplength=300).pack(anchor="w", pady=(2, 14))
 
-        ttk.Label(frame, text="ENTRADA", style="Section.TLabel").pack(anchor="w")
+        ttk.Label(frame, text=t("input"), style="Section.TLabel").pack(anchor="w")
         row = ttk.Frame(frame)
         row.pack(fill="x", pady=(6, 16))
         self.source_var = tk.IntVar(value=-1)
@@ -86,7 +96,7 @@ class App:
 
         head = ttk.Frame(frame)
         head.pack(fill="x")
-        ttk.Label(head, text="VOLUMEN", style="Section.TLabel").pack(side="left")
+        ttk.Label(head, text=t("volume"), style="Section.TLabel").pack(side="left")
         self.volume_label = tk.StringVar(value="-")
         ttk.Label(head, textvariable=self.volume_label, style="Muted.TLabel").pack(side="right")
         vrow = ttk.Frame(frame)
@@ -103,7 +113,7 @@ class App:
         self.btn_up = ttk.Button(vrow, text="+", width=3, command=lambda: self._step_volume(1))
         self.btn_up.pack(side="left")
 
-        ttk.Label(frame, text="ECUALIZADOR", style="Section.TLabel").pack(anchor="w")
+        ttk.Label(frame, text=t("eq"), style="Section.TLabel").pack(anchor="w")
         erow = ttk.Frame(frame)
         erow.pack(fill="x", pady=(6, 0))
         self.eq_var = tk.IntVar(value=-1)
@@ -116,7 +126,18 @@ class App:
 
         self._set_enabled(False)
 
-    # --- Bandeja ---
+    def _set_window_icon(self) -> None:
+        if Image is None:
+            return
+        try:
+            from PIL import ImageTk
+
+            self._icon_photo = ImageTk.PhotoImage(make_icon_image(64))
+            self.root.iconphoto(True, self._icon_photo)
+        except Exception:
+            pass
+
+    # --- Tray ---
 
     def _setup_tray(self) -> None:
         if pystray is None:
@@ -131,13 +152,13 @@ class App:
         menu = pystray.Menu(
             *items,
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Mostrar ventana", lambda: self._events.put(("show", None)), default=True),
-            pystray.MenuItem("Salir", lambda: self._events.put(("quit", None))),
+            pystray.MenuItem(t("show_window"), lambda: self._events.put(("show", None)), default=True),
+            pystray.MenuItem(t("quit"), lambda: self._events.put(("quit", None))),
         )
         self.tray = pystray.Icon("edifier-r990bt", make_icon_image(), "Edifier R990BT", menu)
         self.tray.run_detached()
 
-    # --- Eventos ---
+    # --- Events ---
 
     def _pump(self) -> None:
         try:
@@ -167,7 +188,7 @@ class App:
             self.volume_var.set(st.volume)
             self.volume_label.set(f"{st.volume} / {st.volume_max}")
         if self.tray is not None:
-            name = r990bt.SOURCES.get(st.source, "-") if st.connected else "desconectado"
+            name = r990bt.SOURCES.get(st.source, "-") if st.connected else t("disconnected")
             self.tray.title = f"Edifier R990BT: {name}"
             self.tray.update_menu()
 
@@ -193,7 +214,7 @@ class App:
 
     def _on_close(self) -> None:
         if self.tray is not None:
-            self.root.withdraw()  # sigue en la bandeja
+            self.root.withdraw()  # keep running in the tray
         else:
             self._quit()
 
@@ -207,7 +228,23 @@ class App:
         self.root.mainloop()
 
 
+def self_test() -> int:
+    """Used by the build to check that the bundled exe can load its BLE and tray backends."""
+    import bleak  # noqa: F401
+    from bleak import BleakClient, BleakScanner  # noqa: F401
+
+    if sys.platform == "win32":
+        import bleak.backends.winrt.client  # noqa: F401
+        import bleak.backends.winrt.scanner  # noqa: F401
+    make_icon_image()
+    if sys.platform == "win32" and pystray is None:
+        return 2
+    return 0
+
+
 def main() -> None:
+    if "--self-test" in sys.argv:
+        sys.exit(self_test())
     App().run()
 
 

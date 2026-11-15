@@ -1,7 +1,7 @@
-"""Herramienta de diagnostico por linea de comandos.
+"""Command-line tool for diagnostics and scripting.
 
-Uso:  python -m edifier_ctl <comando> [opciones]
-Todo lo que se muestra queda guardado tambien en diagnostico.txt.
+Usage:  python -m edifier_ctl <command> [options]
+Everything printed is also appended to diagnostics.txt.
 """
 
 from __future__ import annotations
@@ -11,12 +11,14 @@ import asyncio
 import datetime as dt
 import sys
 
+from . import config, r990bt
 from . import protocol as p
-from . import config
 from .client import ADVERTISED_UUIDS, EdifierClient, find_speaker, is_edifier_service, scan, scan_all
 
-LOG_PATH = "diagnostico.txt"
+LOG_PATH = "diagnostics.txt"
 _log_file = None
+
+SOURCE_ALIASES = {"bt": 0x01, "bluetooth": 0x01, "line1": 0x02, "line2": 0x03}
 
 
 def out(text: str = "") -> None:
@@ -31,39 +33,39 @@ def show_frame(frame: p.Frame) -> None:
 
 
 async def resolve_address(address: str | None):
-    """Direccion indicada, la guardada de una vez anterior, o la primera que aparezca."""
+    """The given address, the one saved from an earlier run, or the first speaker found."""
     if address:
         return address
     saved = config.saved_address()
     if saved:
-        out(f"Usando el parlante guardado {saved}")
+        out(f"Using saved speaker {saved}")
         return saved
-    out("Buscando parlante Edifier (hasta 20 s)...")
+    out("Searching for an Edifier speaker (up to 20 s)...")
     device = await find_speaker(timeout=20.0)
     if device is None:
         out(
-            "No se encontro ningun parlante Edifier por BLE.\n"
-            "Proba poniendo musica por Bluetooth en el parlante y volve a intentar, "
-            "o usa 'scan --all' para ver todos los dispositivos."
+            "No Edifier speaker found over BLE.\n"
+            "Play something on the speaker over Bluetooth and try again, "
+            "or run 'scan --all' to list every BLE device."
         )
         raise SystemExit(1)
-    out(f"Encontrado {device.name or '(sin nombre)'} {device.address}")
+    out(f"Found {device.name or '(no name)'} {device.address}")
     config.remember_address(device.address)
     return device
 
 
 async def cmd_forget(args) -> None:
     config.forget_address()
-    out("Direccion guardada borrada. La proxima vez se va a buscar el parlante de nuevo.")
+    out("Saved address cleared. The speaker will be searched for again next time.")
 
 
 async def cmd_scan(args) -> None:
-    out(f"Buscando dispositivos BLE ({args.timeout:.0f} s)...")
+    out(f"Scanning for BLE devices ({args.timeout:.0f} s)...")
     rows = await (scan_all(args.timeout) if args.all else scan(args.timeout))
     if not rows:
-        out("No se encontro nada. Con --all se listan todos los dispositivos BLE.")
+        out("Nothing found. Use --all to list every BLE device.")
     for device, name, uuids, rssi in rows:
-        out(f"{device.address}  {rssi:>4} dBm  {name or '(sin nombre)'}")
+        out(f"{device.address}  {rssi:>4} dBm  {name or '(no name)'}")
         for u in uuids:
             mark = "  <- Edifier" if is_edifier_service(u) or u in ADVERTISED_UUIDS else ""
             out(f"      {u}{mark}")
@@ -83,38 +85,39 @@ async def cmd_gatt(args) -> None:
 async def cmd_info(args) -> None:
     address = await resolve_address(args.address)
     async with EdifierClient(address) as client:
-        out(f"Servicio de control: {client.service_uuid}")
+        out(f"Control service: {client.service_uuid}")
         queries = [
-            ("Capacidades", p.OP_CAPABILITIES),
-            ("Nombre", p.OP_NAME),
+            ("Capabilities", p.OP_CAPABILITIES),
+            ("Name", p.OP_NAME),
             ("Firmware", p.OP_FIRMWARE),
-            ("Entrada", p.OP_SOURCE_GET),
-            ("Volumen", p.OP_VOLUME_GET),
-            ("Ecualizador", p.OP_EQ_GET),
+            ("Input", p.OP_SOURCE_GET),
+            ("Volume", p.OP_VOLUME_GET),
+            ("EQ preset", p.OP_EQ_GET),
         ]
         for label, op in queries:
             out(f"{label}:")
             out(f"  -> {p.build(op).hex(' ').upper()}")
             frame = await client.request(op)
             if frame is None:
-                out("  (sin respuesta)")
+                out("  (no reply)")
                 continue
             show_frame(frame)
             if op == p.OP_NAME:
-                out(f"  texto: {frame.payload.decode('utf-8', 'replace')}")
+                out(f"  text: {frame.payload.decode('utf-8', 'replace')}")
             elif op == p.OP_FIRMWARE:
                 out(f"  version: {'.'.join(str(b) for b in frame.payload)}")
             elif op == p.OP_SOURCE_GET and len(frame.payload) >= 2:
-                out(f"  grupo {frame.payload[0]:02X}, entrada {frame.payload[1]:02X}")
+                name = r990bt.SOURCES.get(frame.payload[1], "?")
+                out(f"  group {frame.payload[0]:02X}, input {frame.payload[1]:02X} ({name})")
             elif op == p.OP_VOLUME_GET and len(frame.payload) >= 2:
-                out(f"  maximo {frame.payload[0]}, actual {frame.payload[1]}")
+                out(f"  max {frame.payload[0]}, current {frame.payload[1]}")
 
 
 async def cmd_watch(args) -> None:
     address = await resolve_address(args.address)
     async with EdifierClient(address) as client:
-        out("Observando la entrada activa. Cambiala con la perilla del parlante,")
-        out("esperando unos segundos en cada una. Ctrl+C para terminar.\n")
+        out("Watching the active input. Change it with the speaker knob,")
+        out("waiting a few seconds on each one. Ctrl+C to stop.\n")
         last = None
         try:
             while True:
@@ -122,25 +125,59 @@ async def cmd_watch(args) -> None:
                 if current != last:
                     stamp = dt.datetime.now().strftime("%H:%M:%S")
                     if current is None:
-                        out(f"{stamp}  sin respuesta a la consulta de entrada")
+                        out(f"{stamp}  no reply to the input query")
                     else:
-                        out(f"{stamp}  grupo {current[0]:02X}  entrada {current[1]:02X}")
+                        out(f"{stamp}  group {current[0]:02X}  input {current[1]:02X}")
                     last = current
                 await asyncio.sleep(args.interval)
         except (KeyboardInterrupt, asyncio.CancelledError):
             pass
 
 
+def parse_source(values: list[str]) -> tuple[int, int]:
+    if len(values) == 1 and values[0].lower() in SOURCE_ALIASES:
+        return r990bt.SOURCE_GROUP, SOURCE_ALIASES[values[0].lower()]
+    if len(values) == 2:
+        return int(values[0], 16), int(values[1], 16)
+    raise SystemExit("Use: source bt|line1|line2   or   source <group> <input> (hex)")
+
+
 async def cmd_source(args) -> None:
+    group, source = parse_source(args.values)
     address = await resolve_address(args.address)
-    group, source = int(args.group, 16), int(args.source, 16)
-    async with EdifierClient(address, on_frame=show_frame) as client:
+    async with EdifierClient(address, on_frame=show_frame if args.verbose else None) as client:
         out(f"  -> {p.build(p.OP_SOURCE_SET, bytes([group, source])).hex(' ').upper()}")
         ack = await client.set_source(group, source)
-        out("ACK recibido" if ack else "Sin ACK")
-        await asyncio.sleep(3)
-        current = await client.get_source()
-        out(f"Entrada leida despues: {current[0]:02X} {current[1]:02X}" if current else "No se pudo leer la entrada")
+        out("ACK received" if ack else "No ACK")
+        if args.verbose:
+            await asyncio.sleep(3)
+            current = await client.get_source()
+            out(f"Input read back: {current[0]:02X} {current[1]:02X}" if current else "Could not read the input")
+
+
+async def cmd_volume(args) -> None:
+    address = await resolve_address(args.address)
+    async with EdifierClient(address) as client:
+        current = await client.get_volume()
+        if args.value is None:
+            out(f"Volume {current[1]} / {current[0]}" if current else "No reply")
+            return
+        maximum = current[0] if current else r990bt.VOLUME_MAX
+        value = args.value
+        if args.value.startswith(("+", "-")):
+            if not current:
+                raise SystemExit("Could not read the current volume.")
+            value = current[1] + int(args.value)
+        value = max(0, min(int(value), maximum))
+        ack = await client.set_volume(value)
+        out(f"Volume set to {value}" + ("" if ack else " (no ACK)"))
+
+
+async def cmd_eq(args) -> None:
+    address = await resolve_address(args.address)
+    async with EdifierClient(address) as client:
+        ack = await client.request(p.OP_EQ_SET, bytes([args.preset]))
+        out(f"EQ preset {args.preset} selected" + ("" if ack else " (no ACK)"))
 
 
 async def cmd_send(args) -> None:
@@ -153,52 +190,61 @@ async def cmd_send(args) -> None:
         await asyncio.sleep(args.wait)
 
 
-def main(argv: list[str] | None = None) -> None:
-    global _log_file
-    parser = argparse.ArgumentParser(prog="edifier_ctl", description="Diagnostico BLE para Edifier R990BT")
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="edifier_ctl", description="Edifier R990BT BLE control and diagnostics")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    s = sub.add_parser("scan", help="buscar parlantes por BLE")
-    s.add_argument("--all", action="store_true", help="mostrar todos los dispositivos BLE")
-    s.add_argument("--timeout", type=float, default=10.0)
-    s.set_defaults(func=cmd_scan)
-
-    for name, func, help_text in [
-        ("gatt", cmd_gatt, "listar servicios y caracteristicas del parlante"),
-        ("info", cmd_info, "consultar capacidades, nombre, firmware, entrada, volumen y EQ"),
-        ("watch", cmd_watch, "mostrar la entrada activa mientras se cambia con la perilla"),
-    ]:
+    def command(name: str, help_text: str, func, address: bool = True):
         s = sub.add_parser(name, help=help_text)
-        s.add_argument("--address", help="direccion BLE (si se omite, se busca sola)")
-        if name == "watch":
-            s.add_argument("--interval", type=float, default=1.5)
+        if address:
+            s.add_argument("--address", help="BLE address (default: saved speaker, or search)")
         s.set_defaults(func=func)
+        return s
 
-    s = sub.add_parser("source", help="cambiar la entrada (valores en hexadecimal)")
-    s.add_argument("group", help="byte de grupo, el que muestra 'watch'")
-    s.add_argument("source", help="codigo de entrada, el que muestra 'watch'")
-    s.add_argument("--address")
-    s.set_defaults(func=cmd_source)
+    s = command("scan", "search for speakers over BLE", cmd_scan, address=False)
+    s.add_argument("--all", action="store_true", help="list every BLE device")
+    s.add_argument("--timeout", type=float, default=10.0)
 
-    s = sub.add_parser("forget", help="olvidar el parlante guardado y volver a buscarlo")
-    s.set_defaults(func=cmd_forget)
+    command("gatt", "list the speaker's GATT services", cmd_gatt)
+    command("info", "query capabilities, name, firmware, input, volume and EQ", cmd_info)
+    s = command("watch", "print the active input while you change it with the knob", cmd_watch)
+    s.add_argument("--interval", type=float, default=1.5)
 
-    s = sub.add_parser("send", help="mandar un comando arbitrario (uso avanzado)")
-    s.add_argument("opcode", help="opcode en hexadecimal, por ejemplo 61")
-    s.add_argument("payload", nargs="*", help="bytes de datos en hexadecimal")
+    s = command("source", "switch input: bt, line1, line2 (or <group> <input> in hex)", cmd_source)
+    s.add_argument("values", nargs="+")
+    s.add_argument("-v", "--verbose", action="store_true", help="show raw frames and read the input back")
+
+    s = command("volume", "show the volume, or set it: 8, +1, -2", cmd_volume)
+    s.add_argument("value", nargs="?")
+
+    s = command("eq", "select EQ preset 0, 1 or 2", cmd_eq)
+    s.add_argument("preset", type=int, choices=sorted(r990bt.EQ_PRESETS))
+
+    command("forget", "forget the saved speaker and search again next time", cmd_forget, address=False)
+
+    s = command("send", "send an arbitrary command (advanced)", cmd_send)
+    s.add_argument("opcode", help="opcode in hex, e.g. 61")
+    s.add_argument("payload", nargs="*", help="payload bytes in hex")
     s.add_argument("--app", default="EC")
     s.add_argument("--wait", type=float, default=3.0)
-    s.add_argument("--address")
-    s.set_defaults(func=cmd_send)
+    return parser
 
-    args = parser.parse_args(argv)
+
+def main(argv: list[str] | None = None) -> None:
+    global _log_file
+    # argparse would read "-2" as an option; accept "volume -2" by marking the end of options.
+    raw = list(sys.argv[1:] if argv is None else argv)
+    if len(raw) >= 2 and raw[0] == "volume" and raw[1].startswith("-") and raw[1][1:].isdigit():
+        raw.insert(1, "--")
+    args = build_parser().parse_args(raw)
+
     _log_file = open(LOG_PATH, "a", encoding="utf-8")
-    out(f"\n=== {dt.datetime.now():%Y-%m-%d %H:%M:%S}  {' '.join(sys.argv[1:])} ===")
+    out(f"\n=== {dt.datetime.now():%Y-%m-%d %H:%M:%S}  {' '.join(raw)} ===")
     try:
         asyncio.run(args.func(args))
     except KeyboardInterrupt:
         pass
-    except Exception as exc:  # mostrar el error en el log para poder compartirlo
+    except Exception as exc:  # log the error so it can be shared
         out(f"ERROR: {type(exc).__name__}: {exc}")
         sys.exit(1)
     finally:

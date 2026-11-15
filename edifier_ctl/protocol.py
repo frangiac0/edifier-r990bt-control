@@ -1,13 +1,13 @@
-"""Formato de tramas del protocolo BLE de Edifier ConneX.
+"""Frame format of the Edifier ConneX BLE protocol.
 
-Basado en la documentacion comunitaria de otros modelos (M60, M90, MR5BT).
-Para el R990BT el formato todavia no esta verificado.
+Based on community documentation for other models (M60, M90, MR5BT) and
+verified on an R990BT.
 
-    AA EC opcode len_hi len_lo payload... checksum   pedido del host
-    BB EC opcode len_hi len_lo payload... checksum   respuesta del parlante
-    CC EC ...                                        algunos ACK
+    AA EC opcode len_hi len_lo payload... checksum   host request
+    BB EC opcode len_hi len_lo payload... checksum   speaker reply
+    CC EC ...                                        some ACKs
 
-checksum = byte bajo de la suma de todos los bytes anteriores.
+checksum = low byte of the sum of all preceding bytes.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ HOST = 0xAA
 REPLY_HEADERS = (0xBB, 0xCC)
 APP_CODES = (0xEC, 0xED)
 
-# Opcodes conocidos en otros modelos de la familia.
+# Opcodes known from this speaker family.
 OP_CAPABILITIES = 0xD8
 OP_NAME = 0xC9
 OP_FIRMWARE = 0xC6
@@ -32,17 +32,17 @@ OP_MEDIA = 0xC2
 OP_A2DP_STATE = 0xC3
 
 OPCODE_NAMES = {
-    OP_CAPABILITIES: "capacidades",
-    OP_NAME: "nombre",
+    OP_CAPABILITIES: "capabilities",
+    OP_NAME: "name",
     OP_FIRMWARE: "firmware",
-    OP_SOURCE_GET: "entrada (consulta)",
-    OP_SOURCE_SET: "entrada (cambio)",
-    OP_VOLUME_GET: "volumen (consulta)",
-    OP_VOLUME_SET: "volumen (cambio)",
-    OP_EQ_GET: "ecualizador (consulta)",
-    OP_EQ_SET: "ecualizador (cambio)",
-    OP_MEDIA: "reproduccion",
-    OP_A2DP_STATE: "estado del audio Bluetooth",
+    OP_SOURCE_GET: "input (query)",
+    OP_SOURCE_SET: "input (set)",
+    OP_VOLUME_GET: "volume (query)",
+    OP_VOLUME_SET: "volume (set)",
+    OP_EQ_GET: "EQ (query)",
+    OP_EQ_SET: "EQ (set)",
+    OP_MEDIA: "playback",
+    OP_A2DP_STATE: "Bluetooth audio state",
 }
 
 
@@ -68,12 +68,12 @@ class Frame:
         return self.header == 0xCC
 
     def describe(self) -> str:
-        name = OPCODE_NAMES.get(self.opcode, "desconocido")
-        return f"{self.raw.hex(' ').upper()}  [op {self.opcode:02X} {name}, datos: {self.payload.hex(' ').upper() or '-'}]"
+        name = OPCODE_NAMES.get(self.opcode, "unknown")
+        return f"{self.raw.hex(' ').upper()}  [op {self.opcode:02X} {name}, data: {self.payload.hex(' ').upper() or '-'}]"
 
 
 class FrameParser:
-    """Rearma tramas a partir de notificaciones BLE que pueden llegar partidas o juntas."""
+    """Reassembles frames from BLE notifications, which may arrive split or merged."""
 
     def __init__(self) -> None:
         self._buf = bytearray()
@@ -82,7 +82,7 @@ class FrameParser:
         self._buf.extend(data)
         frames: list[Frame] = []
         while True:
-            # Descartar basura hasta un encabezado plausible.
+            # Skip garbage until a plausible header.
             while len(self._buf) >= 2 and not (
                 self._buf[0] in REPLY_HEADERS + (HOST,) and self._buf[1] in APP_CODES
             ):
