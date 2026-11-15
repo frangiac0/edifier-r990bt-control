@@ -97,8 +97,13 @@ Verified on an R990BT with firmware 1.0.2. Each change was set, acknowledged and
 | Name | `AA EC C9 00 00 5F` | | UTF-8 |
 | Firmware | `AA EC C6 00 00 5C` | | 3 bytes |
 | Capabilities | `AA EC D8 00 00 6E` | | 22 bytes |
+| Power off | | `AA EC CE 00 00 64` | no reply; the speaker turns off |
 
 After an input change the speaker also sends `0xC3` notifications with the state of the Bluetooth audio link.
+
+### Power and standby
+
+`0xCE` turns the speaker off. Once off, it stops advertising over BLE and cannot be reached, and reconnecting Bluetooth audio from Windows does not wake it. It has to be turned back on with the rear knob, so the speaker can be switched off from the PC but not on.
 
 Capabilities payload on the tested unit:
 
