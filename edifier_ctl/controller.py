@@ -7,43 +7,20 @@ ocurre en un bucle asyncio aparte. Los cambios de estado se informan por callbac
 from __future__ import annotations
 
 import asyncio
-import json
-import os
 import threading
 import time
 from dataclasses import dataclass, replace
-from pathlib import Path
 from typing import Callable
 
 from . import protocol as p
 from . import r990bt
-from .client import EdifierClient, scan
+from . import config
+from .client import EdifierClient, find_speaker
 
 POLL_SECONDS = 2.0
 # Despues de un cambio, el parlante tarda unos segundos en informar el valor nuevo.
 HOLD_SECONDS = 4.0
 RETRY_SECONDS = 5.0
-
-
-def config_path() -> Path:
-    base = os.environ.get("APPDATA") or str(Path.home() / ".config")
-    return Path(base) / "edifier-r990bt-control" / "config.json"
-
-
-def load_config() -> dict:
-    try:
-        return json.loads(config_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
-def save_config(data: dict) -> None:
-    path = config_path()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    except OSError:
-        pass
 
 
 @dataclass(frozen=True)
@@ -66,7 +43,6 @@ class Controller:
         self._client: EdifierClient | None = None
         self._lock: asyncio.Lock | None = None
         self._stopping = False
-        self._config = load_config()
         self._hold: dict[str, float] = {}
 
     # --- API para la interfaz (cualquier hilo) ---
@@ -92,8 +68,7 @@ class Controller:
         self._submit(self._do_set_eq(preset))
 
     def forget_device(self) -> None:
-        self._config.pop("address", None)
-        save_config(self._config)
+        config.forget_address()
 
     # --- Interno ---
 
@@ -130,15 +105,15 @@ class Controller:
             if not self._stopping:
                 await asyncio.sleep(RETRY_SECONDS)
 
-    async def _find_address(self) -> str | None:
-        if self._config.get("address"):
-            return self._config["address"]
+    async def _find_address(self):
+        saved = config.saved_address()
+        if saved:
+            return saved
         self._update(connected=False, status="Buscando parlante...")
-        found = await scan(timeout=8.0)
-        if not found:
+        device = await find_speaker(timeout=20.0)
+        if device is None:
             self._update(status="No se encontro el parlante. Pone musica por Bluetooth o cerra ConneX en el celular.")
-            return None
-        return found[0][0].address
+        return device
 
     async def _session(self) -> None:
         address = await self._find_address()
@@ -148,9 +123,7 @@ class Controller:
         client = EdifierClient(address)
         self._client = client
         await client.connect()
-        if self._config.get("address") != address:
-            self._config["address"] = address
-            save_config(self._config)
+        config.remember_address(client.address)
 
         name_frame = await self._request(p.OP_NAME)
         name = name_frame.payload.decode("utf-8", "replace").strip() if name_frame else "Edifier"

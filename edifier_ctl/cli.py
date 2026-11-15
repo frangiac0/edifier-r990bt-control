@@ -12,7 +12,8 @@ import datetime as dt
 import sys
 
 from . import protocol as p
-from .client import EdifierClient, is_edifier_service, scan, scan_all
+from . import config
+from .client import ADVERTISED_UUIDS, EdifierClient, find_speaker, is_edifier_service, scan, scan_all
 
 LOG_PATH = "diagnostico.txt"
 _log_file = None
@@ -29,22 +30,31 @@ def show_frame(frame: p.Frame) -> None:
     out(f"  <- {frame.describe()}")
 
 
-async def resolve_address(address: str | None) -> str:
+async def resolve_address(address: str | None):
+    """Direccion indicada, la guardada de una vez anterior, o la primera que aparezca."""
     if address:
         return address
-    out("Buscando parlantes Edifier (10 s)...")
-    found = await scan()
-    if not found:
-        msg = (
+    saved = config.saved_address()
+    if saved:
+        out(f"Usando el parlante guardado {saved}")
+        return saved
+    out("Buscando parlante Edifier (hasta 20 s)...")
+    device = await find_speaker(timeout=20.0)
+    if device is None:
+        out(
             "No se encontro ningun parlante Edifier por BLE.\n"
             "Proba poniendo musica por Bluetooth en el parlante y volve a intentar, "
             "o usa 'scan --all' para ver todos los dispositivos."
         )
-        out(msg)
         raise SystemExit(1)
-    device, name, _, rssi = found[0]
-    out(f"Usando {name or '(sin nombre)'} {device.address} (senal {rssi} dBm)")
-    return device.address
+    out(f"Encontrado {device.name or '(sin nombre)'} {device.address}")
+    config.remember_address(device.address)
+    return device
+
+
+async def cmd_forget(args) -> None:
+    config.forget_address()
+    out("Direccion guardada borrada. La proxima vez se va a buscar el parlante de nuevo.")
 
 
 async def cmd_scan(args) -> None:
@@ -55,7 +65,7 @@ async def cmd_scan(args) -> None:
     for device, name, uuids, rssi in rows:
         out(f"{device.address}  {rssi:>4} dBm  {name or '(sin nombre)'}")
         for u in uuids:
-            mark = "  <- servicio Edifier" if is_edifier_service(u) else ""
+            mark = "  <- Edifier" if is_edifier_service(u) or u in ADVERTISED_UUIDS else ""
             out(f"      {u}{mark}")
 
 
@@ -169,6 +179,9 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("source", help="codigo de entrada, el que muestra 'watch'")
     s.add_argument("--address")
     s.set_defaults(func=cmd_source)
+
+    s = sub.add_parser("forget", help="olvidar el parlante guardado y volver a buscarlo")
+    s.set_defaults(func=cmd_forget)
 
     s = sub.add_parser("send", help="mandar un comando arbitrario (uso avanzado)")
     s.add_argument("opcode", help="opcode en hexadecimal, por ejemplo 61")

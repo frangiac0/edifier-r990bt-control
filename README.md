@@ -127,7 +127,7 @@ Ejemplo, si el grupo es `0F` y Line 1 es `02`:
 py -m edifier_ctl source 0F 02
 ```
 
-Si encontraste varios parlantes, agregá `--address XX:XX:XX:XX:XX:XX` a cualquier comando.
+La primera vez que encuentra el parlante, el programa guarda su dirección y después la usa directamente, porque el parlante se anuncia por BLE solo de a ratos. Para usar otro parlante, corré `py -m edifier_ctl forget`, o agregá `--address XX:XX:XX:XX:XX:XX` a cualquier comando.
 
 ### Resultado
 

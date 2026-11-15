@@ -17,9 +17,25 @@ NOTIFY_CHAR = "48090001" + SERVICE_SUFFIX
 WRITE_CHAR = "48090002" + SERVICE_SUFFIX
 
 
+# UUID que anuncia el R990BT para que ConneX lo encuentre.
+ADVERTISED_UUIDS = {"0000d300-0000-1000-8000-00805f9b34fb"}
+
+
 def is_edifier_service(uuid: str) -> bool:
     uuid = uuid.lower()
     return uuid.startswith("4809") and uuid.endswith(SERVICE_SUFFIX)
+
+
+def looks_like_edifier(device: BLEDevice, adv) -> bool:
+    name = (adv.local_name or device.name or "").lower()
+    uuids = [u.lower() for u in adv.service_uuids]
+    return "edifier" in name or any(u in ADVERTISED_UUIDS or is_edifier_service(u) for u in uuids)
+
+
+async def find_speaker(timeout: float = 20.0) -> BLEDevice | None:
+    """Espera hasta encontrar el primer parlante Edifier. El parlante se anuncia de forma
+    intermitente, asi que conviene un tiempo largo; la busqueda corta apenas aparece."""
+    return await BleakScanner.find_device_by_filter(looks_like_edifier, timeout=timeout)
 
 
 async def scan(timeout: float = 10.0) -> list[tuple[BLEDevice, str, list[str], int]]:
@@ -27,10 +43,9 @@ async def scan(timeout: float = 10.0) -> list[tuple[BLEDevice, str, list[str], i
     found = await BleakScanner.discover(timeout=timeout, return_adv=True)
     result = []
     for device, adv in found.values():
-        name = adv.local_name or device.name or ""
-        uuids = [u.lower() for u in adv.service_uuids]
-        if "edifier" in name.lower() or any(is_edifier_service(u) for u in uuids):
-            result.append((device, name, uuids, adv.rssi))
+        if looks_like_edifier(device, adv):
+            name = adv.local_name or device.name or ""
+            result.append((device, name, [u.lower() for u in adv.service_uuids], adv.rssi))
     result.sort(key=lambda r: -r[3])
     return result
 
@@ -45,8 +60,8 @@ async def scan_all(timeout: float = 10.0):
 
 
 class EdifierClient:
-    def __init__(self, address: str, on_frame: Callable[[p.Frame], None] | None = None) -> None:
-        self.address = address
+    def __init__(self, address: str | BLEDevice, on_frame: Callable[[p.Frame], None] | None = None) -> None:
+        self.address = address if isinstance(address, str) else address.address
         self._client = BleakClient(address)
         self._parser = p.FrameParser()
         self._queue: asyncio.Queue[p.Frame] = asyncio.Queue()
