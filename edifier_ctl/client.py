@@ -145,6 +145,10 @@ class EdifierClient:
     async def set_source(self, group: int, source: int) -> p.Frame | None:
         return await self.request(p.OP_SOURCE_SET, bytes([group, source]))
 
+    async def power_off(self) -> None:
+        """Turn the speaker off. It sends no reply and cannot be turned back on over BLE."""
+        await self.send_raw(p.build(p.OP_POWER_OFF))
+
     async def get_volume(self) -> tuple[int, int] | None:
         frame = await self.request(p.OP_VOLUME_GET)
         if frame and len(frame.payload) >= 2:

@@ -180,6 +180,13 @@ async def cmd_eq(args) -> None:
         out(f"EQ preset {args.preset} selected" + ("" if ack else " (no ACK)"))
 
 
+async def cmd_off(args) -> None:
+    address = await resolve_address(args.address)
+    async with EdifierClient(address) as client:
+        await client.power_off()
+        out("Power-off sent. Turn the speaker back on with its knob.")
+
+
 async def cmd_send(args) -> None:
     address = await resolve_address(args.address)
     payload = p.parse_hex(" ".join(args.payload)) if args.payload else b""
@@ -220,6 +227,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = command("eq", "select EQ preset 0, 1 or 2", cmd_eq)
     s.add_argument("preset", type=int, choices=sorted(r990bt.EQ_PRESETS))
 
+    command("off", "turn the speaker off (it can only be turned on with the knob)", cmd_off)
     command("forget", "forget the saved speaker and search again next time", cmd_forget, address=False)
 
     s = command("send", "send an arbitrary command (advanced)", cmd_send)

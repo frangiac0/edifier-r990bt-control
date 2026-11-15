@@ -20,6 +20,9 @@ STRINGS = {
         "connected": "Connected to {name}",
         "not_found": "Speaker not found. Play something over Bluetooth, or close ConneX on your phone.",
         "retrying": "No connection ({error}). Retrying...",
+        "power_off": "Turn off",
+        "power_off_confirm": "Turn the speaker off?\n\nIt can only be turned back on with the knob on the speaker.",
+        "powered_off": "Speaker off. Turn it on with the knob; the app will reconnect.",
     },
     "es": {
         "input": "ENTRADA",
@@ -33,6 +36,9 @@ STRINGS = {
         "connected": "Conectado a {name}",
         "not_found": "No se encontró el parlante. Poné música por Bluetooth o cerrá ConneX en el celular.",
         "retrying": "Sin conexión ({error}). Reintentando...",
+        "power_off": "Apagar",
+        "power_off_confirm": "¿Apagar el parlante?\n\nSolo se puede volver a prender con la perilla del parlante.",
+        "powered_off": "Parlante apagado. Prendelo con la perilla; la app se reconecta sola.",
     },
 }
 

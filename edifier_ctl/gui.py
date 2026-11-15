@@ -5,7 +5,7 @@ from __future__ import annotations
 import queue
 import sys
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 from . import r990bt
 from .controller import Controller, State
@@ -124,6 +124,9 @@ class App:
             b.pack(side="left", padx=(0, 12))
             self.eq_buttons.append(b)
 
+        self.btn_power = ttk.Button(frame, text=t("power_off"), command=self._confirm_power_off)
+        self.btn_power.pack(anchor="e", pady=(18, 0))
+
         self._set_enabled(False)
 
     def _set_window_icon(self) -> None:
@@ -196,8 +199,12 @@ class App:
         state = "normal" if enabled else "disabled"
         for b in self.source_buttons:
             b.configure(state=state)
-        for w in (self.btn_down, self.btn_up, self.volume_scale, *self.eq_buttons):
+        for w in (self.btn_down, self.btn_up, self.volume_scale, self.btn_power, *self.eq_buttons):
             w.state(["!disabled"] if enabled else ["disabled"])
+
+    def _confirm_power_off(self) -> None:
+        if messagebox.askyesno("Edifier R990BT", t("power_off_confirm"), icon="warning", parent=self.root):
+            self.controller.power_off()
 
     def _on_volume_drag(self, value: str) -> None:
         self.volume_label.set(f"{round(float(value))} / {self._state.volume_max}")

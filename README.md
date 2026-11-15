@@ -19,6 +19,7 @@ Requirements: Windows 10 or 11 with Bluetooth 4.0 or later. Most laptops have it
 - **Input:** Bluetooth, Line 1, Line 2.
 - **Volume:** slider and `-` / `+` buttons (0 to 16, the speaker's own scale).
 - **EQ:** the speaker's three presets.
+- **Turn off:** powers the speaker down. It can only be turned back on with its knob; the app reconnects by itself when it is.
 
 Closing the window keeps the app running in the system tray, next to the clock. The tray menu switches inputs without opening the window. Choose **Quit** there to exit.
 
@@ -52,6 +53,7 @@ edifier-cli eq 1
 | `source bt\|line1\|line2` | Switch input |
 | `volume [N\|+N\|-N]` | Show or set the volume |
 | `eq 0\|1\|2` | Select an EQ preset |
+| `off` | Turn the speaker off |
 | `info` | Show capabilities, name, firmware, input, volume and EQ |
 | `scan [--all]` | List nearby Edifier (or all) BLE devices |
 | `gatt` | List the speaker's GATT services |

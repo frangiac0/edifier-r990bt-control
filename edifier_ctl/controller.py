@@ -45,6 +45,7 @@ class Controller:
         self._lock: asyncio.Lock | None = None
         self._stopping = False
         self._hold: dict[str, float] = {}
+        self._powered_off = False
 
     # --- API for the GUI (any thread) ---
 
@@ -67,6 +68,9 @@ class Controller:
 
     def set_eq(self, preset: int) -> None:
         self._submit(self._do_set_eq(preset))
+
+    def power_off(self) -> None:
+        self._submit(self._do_power_off())
 
     def forget_device(self) -> None:
         config.forget_address()
@@ -95,7 +99,10 @@ class Controller:
             except asyncio.CancelledError:
                 break
             except Exception as exc:  # any BLE failure: retry
-                self._update(connected=False, status=t("retrying", error=type(exc).__name__))
+                if self._powered_off:
+                    self._update(connected=False, status=t("powered_off"))
+                else:
+                    self._update(connected=False, status=t("retrying", error=type(exc).__name__))
             finally:
                 if self._client:
                     try:
@@ -120,7 +127,8 @@ class Controller:
         address = await self._find_address()
         if address is None:
             return
-        self._update(status=t("connecting"))
+        if not self._powered_off:
+            self._update(status=t("connecting"))
         client = EdifierClient(address)
         self._client = client
         await client.connect()
@@ -128,6 +136,7 @@ class Controller:
 
         name_frame = await self._request(p.OP_NAME)
         name = name_frame.payload.decode("utf-8", "replace").strip() if name_frame else "Edifier"
+        self._powered_off = False
         self._update(connected=True, name=name, status=t("connected", name=name))
 
         misses = 0
@@ -175,6 +184,18 @@ class Controller:
         await self._request(p.OP_VOLUME_SET, bytes([volume]))
         self._hold["volume"] = time.monotonic() + HOLD_SECONDS
         self._update(volume=volume)
+
+    async def _do_power_off(self) -> None:
+        if self._client is None or self._lock is None:
+            return
+        self._powered_off = True
+        async with self._lock:
+            await self._client.power_off()
+        self._update(connected=False, status=t("powered_off"))
+        try:
+            await self._client.disconnect()
+        except Exception:
+            pass
 
     async def _do_set_eq(self, preset: int) -> None:
         await self._request(p.OP_EQ_SET, bytes([preset]))
