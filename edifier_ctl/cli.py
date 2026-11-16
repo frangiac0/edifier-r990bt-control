@@ -242,30 +242,32 @@ async def cmd_send(args) -> None:
 
 # --- Safe read-only opcode probing ---------------------------------------
 #
-# These are the opcodes we already know change the speaker's state or are part
-# of firmware update / reset. The probe NEVER sends any of them, and it only
-# ever sends an empty payload, so it cannot carry data into a write command.
-DANGEROUS_OPCODES = {
-    p.OP_SOURCE_SET, p.OP_VOLUME_SET, p.OP_EQ_SET, p.OP_NAME_SET,
-    p.OP_PROMPT_TONE_SET, p.OP_POWER_OFF, p.OP_DISCONNECT_AUDIO, p.OP_MEDIA,
-    0x07,              # factory reset
-    0x10, 0x11, 0x12,  # firmware update
-    0x86, 0x87,        # multi prompt tone set
-    0xC2, 0xB8,        # playback / LAN-switch set
-    0xF1,              # control-setting write (tap_set); 0xF0 is the matching query
-}
+# Every opcode is now known from the ConneX dictionary (edifier_ctl/opcodes.py).
+# The probe only ever sends opcodes whose ConneX name ends in "_query", with an
+# empty payload, so it never carries data into a write command and never sends
+# pairing, firmware-update, logging or reset commands.
+from .opcodes import LINK_DROPPERS, NON_QUERY_OPCODES, OPCODE_NAMES, QUERY_OPCODES
 
-# Opcodes that look like queries: the known read opcodes, plus the even/low
-# partners of known get/set pairs. Default probe target; low risk.
+DANGEROUS_OPCODES = set(NON_QUERY_OPCODES) | set(LINK_DROPPERS)
+
+# Query opcodes already confirmed on the R990BT, plus the speaker-relevant ones
+# we have not confirmed yet. Headphone-only queries (heart rate, ear detection,
+# ANC, head tracking, ...) are left out; a range/only run can still reach them.
+_CONFIRMED = [0x61, 0x66, 0xD5, 0xF9, 0xC3, 0xC6, 0xC8, 0xC9, 0xD8]
+_SPEAKER_CANDIDATES = [
+    0x43,  # custom_eq_query
+    0x5F,  # light_color_query
+    0xBE,  # bass_sound_level_query
+    0xC5,  # d2dp_volume_query
+    0xD3,  # time_off_query
+    0xD7,  # auto_shutdown_without_audio_query
+    0xF0,  # tap_query (control-setting bus)
+    0xF2,  # device_state_query
+    0xF7,  # led_state_query
+]
 LIKELY_QUERY_OPCODES = [
-    p.OP_CAPABILITIES, p.OP_NAME, p.OP_FIRMWARE, p.OP_SOURCE_GET,
-    p.OP_VOLUME_GET, p.OP_EQ_GET, p.OP_PROMPT_TONE_GET, p.OP_A2DP_STATE,
-    0x60, 0x63, 0x64, 0x65, 0x68, 0x69,   # neighbours of input/volume gets
-    0xC5, 0xC7, 0xC8,                     # neighbours of name/firmware (C7, C8 found)
-    0xD0, 0xD2, 0xD3, 0xD4, 0xD6, 0xD7, 0xD9,        # around eq/capabilities
-    0xDA, 0xDB, 0xDC, 0xF0, 0xF8, 0xFB, 0xFC,        # status-like ranges (F0 = control-setting query)
-    # Left out because they drop the BLE link when probed (recoverable):
-    # 0xCB-0xCF (next to name-set 0xCA) and 0xD1.
+    o for o in _CONFIRMED + _SPEAKER_CANDIDATES
+    if o not in DANGEROUS_OPCODES
 ]
 
 
@@ -295,11 +297,6 @@ async def cmd_probe(args) -> None:
 
     skipped = sorted(o for o in targets if o in DANGEROUS_OPCODES)
     targets = [o for o in targets if o not in DANGEROUS_OPCODES]
-    known = {
-        p.OP_CAPABILITIES, p.OP_NAME, p.OP_FIRMWARE, p.OP_SOURCE_GET,
-        p.OP_VOLUME_GET, p.OP_EQ_GET, p.OP_PROMPT_TONE_GET, p.OP_A2DP_STATE,
-    }
-
     out(f"Probing {len(targets)} read-only opcodes (empty payload, {args.wait}s each).")
     if skipped:
         out("Skipped (known state-changing): " + " ".join(f"{o:02X}" for o in skipped))
@@ -316,17 +313,16 @@ async def cmd_probe(args) -> None:
                 break
             if reply is None:
                 continue
-            tag = "known" if op in known else "UNDOCUMENTED"
-            answered.append((op, reply, tag))
-            out(f"  {op:02X} -> {reply.describe()}   [{tag}]")
+            name = OPCODE_NAMES.get(op, "unknown")
+            answered.append((op, reply, name))
+            out(f"  {op:02X} {name} -> data: {reply.payload.hex(' ').upper() or '-'}")
 
     out("")
-    new = [(o, r) for o, r, t in answered if t == "UNDOCUMENTED"]
-    if new:
-        out(f"{len(new)} undocumented opcode(s) replied: " + " ".join(f"{o:02X}" for o, _ in new))
-        out("Share this output; these are candidates for new read commands.")
+    if answered:
+        out(f"{len(answered)} opcode(s) replied: " + " ".join(f"{o:02X}" for o, _, _ in answered))
+        out("Share this output to decode what each value means.")
     else:
-        out("No undocumented opcodes replied. Nothing new beyond what is known.")
+        out("No opcodes replied.")
 
 
 def build_parser() -> argparse.ArgumentParser:

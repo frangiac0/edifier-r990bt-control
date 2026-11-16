@@ -86,7 +86,8 @@ class Frame:
         return self.header == 0xCC
 
     def describe(self) -> str:
-        name = OPCODE_NAMES.get(self.opcode, "unknown")
+        from .opcodes import OPCODE_NAMES as FULL
+        name = OPCODE_NAMES.get(self.opcode) or FULL.get(self.opcode, "unknown")
         return f"{self.raw.hex(' ').upper()}  [op {self.opcode:02X} {name}, data: {self.payload.hex(' ').upper() or '-'}]"
 
 
