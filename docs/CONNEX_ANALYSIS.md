@@ -55,6 +55,8 @@ EQ profile 15 has three presets. ConneX lists them in this order:
 | `0xF9` / `0xFA` | Prompt tone on/off query / set | Implemented, from ConneX |
 | `0x86` / `0x87` | Multi prompt tone query / set | Not used: the R990BT does not flag it |
 | `0xCD` | Disconnect Bluetooth audio | Verified: leaves the speaker in pairing mode |
+| `0xC8` | Classic Bluetooth (BR/EDR) address query | Discovered by probing; returns 6 bytes, the A2DP MAC (differs from the BLE address) |
+| `0xC7` | One-byte status, value `01` | Discovered by probing; meaning unknown |
 | `0x07` | Factory reset | Not used, on purpose |
 | `0x10` / `0x11` | Firmware update (see below) | Not used, on purpose |
 | `0x12` | Not sent or handled anywhere in ConneX | Unknown |

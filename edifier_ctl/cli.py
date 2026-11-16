@@ -93,6 +93,7 @@ async def cmd_info(args) -> None:
             ("Input", p.OP_SOURCE_GET),
             ("Volume", p.OP_VOLUME_GET),
             ("EQ preset", p.OP_EQ_GET),
+            ("Bluetooth address", p.OP_BT_ADDRESS),
         ]
         for label, op in queries:
             out(f"{label}:")
@@ -111,6 +112,8 @@ async def cmd_info(args) -> None:
                 out(f"  group {frame.payload[0]:02X}, input {frame.payload[1]:02X} ({name})")
             elif op == p.OP_VOLUME_GET and len(frame.payload) >= 2:
                 out(f"  max {frame.payload[0]}, current {frame.payload[1]}")
+            elif op == p.OP_BT_ADDRESS and len(frame.payload) == 6:
+                out(f"  Classic Bluetooth (A2DP) address: {':'.join(f'{b:02X}' for b in frame.payload)}")
 
 
 async def cmd_watch(args) -> None:
@@ -257,9 +260,10 @@ LIKELY_QUERY_OPCODES = [
     p.OP_CAPABILITIES, p.OP_NAME, p.OP_FIRMWARE, p.OP_SOURCE_GET,
     p.OP_VOLUME_GET, p.OP_EQ_GET, p.OP_PROMPT_TONE_GET, p.OP_A2DP_STATE,
     0x60, 0x63, 0x64, 0x65, 0x68, 0x69,   # neighbours of input/volume gets
-    0xC5, 0xC7, 0xC8, 0xCB, 0xCC, 0xCF,   # neighbours of name/firmware/eq
+    0xC5, 0xC7, 0xC8,                     # neighbours of name/firmware (C7, C8 found)
     0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD6, 0xD7, 0xD9,  # around eq/capabilities
     0xDA, 0xDB, 0xDC, 0xF0, 0xF1, 0xF8, 0xFB, 0xFC,  # status-like ranges
+    # 0xCB, 0xCC, 0xCF left out: the link dropped at 0xCB (next to name-set 0xCA).
 ]
 
 
@@ -296,7 +300,12 @@ async def cmd_probe(args) -> None:
     answered = []
     async with EdifierClient(address) as client:
         for op in targets:
-            reply = await client.request(op, b"", timeout=args.wait)
+            try:
+                reply = await client.request(op, b"", timeout=args.wait)
+            except Exception as e:  # BLE link dropped, etc.
+                out(f"  {op:02X} -> link dropped ({type(e).__name__}). Stopping.")
+                out(f"\n0x{op:02X} may reset the BLE link; the speaker reconnects on its own.")
+                break
             if reply is None:
                 continue
             tag = "known" if op in known else "UNDOCUMENTED"

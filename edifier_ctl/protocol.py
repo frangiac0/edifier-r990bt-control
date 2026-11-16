@@ -33,6 +33,8 @@ OP_A2DP_STATE = 0xC3
 OP_POWER_OFF = 0xCE
 OP_DISCONNECT_AUDIO = 0xCD
 OP_NAME_SET = 0xCA
+OP_BT_ADDRESS = 0xC8        # returns the Classic Bluetooth (BR/EDR) address (discovered)
+OP_C7_STATUS = 0xC7         # one-byte status, meaning unknown (discovered)
 OP_PROMPT_TONE_GET = 0xF9
 OP_PROMPT_TONE_SET = 0xFA
 
@@ -51,6 +53,8 @@ OPCODE_NAMES = {
     OP_POWER_OFF: "power off",
     OP_DISCONNECT_AUDIO: "disconnect Bluetooth audio",
     OP_NAME_SET: "name (set)",
+    OP_BT_ADDRESS: "Bluetooth address",
+    OP_C7_STATUS: "status C7 (unknown)",
     OP_PROMPT_TONE_GET: "prompt tone (query)",
     OP_PROMPT_TONE_SET: "prompt tone (set)",
 }
