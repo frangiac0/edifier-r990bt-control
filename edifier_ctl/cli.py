@@ -230,6 +230,37 @@ async def cmd_pair(args) -> None:
         out("Connect the new device to EDIFIER R990BT. Control commands work again in a minute or two.")
 
 
+async def cmd_timer(args) -> None:
+    """Native scheduled power-off, handled by the speaker itself (no PC needed).
+
+    'timer'        show remaining minutes
+    'timer 30'     turn off in 30 minutes
+    'timer off'    cancel
+    """
+    address = await resolve_address(args.address)
+    async with EdifierClient(address, on_frame=show_frame) as client:
+        if args.value is None:
+            frame = await client.request(p.OP_TIMER_GET)
+            mins = (frame.payload[0] << 8 | frame.payload[1]) if frame and len(frame.payload) >= 2 else 0
+            out(f"Scheduled power-off: {'off' if not mins else str(mins) + ' min'}")
+            return
+        if args.value.lower() in ("off", "0", "cancel"):
+            await client.request(p.OP_TIMER_CANCEL)
+            out("Scheduled power-off cancelled.")
+            return
+        try:
+            mins = int(args.value)
+        except ValueError:
+            out("Usage: timer [minutes | off]")
+            raise SystemExit(2)
+        mins = max(1, min(600, mins))
+        await client.request(p.OP_TIMER_SET, bytes([(mins >> 8) & 0xFF, mins & 0xFF]))
+        await asyncio.sleep(0.4)
+        frame = await client.request(p.OP_TIMER_GET)
+        got = (frame.payload[0] << 8 | frame.payload[1]) if frame and len(frame.payload) >= 2 else None
+        out(f"Set to {mins} min. Speaker reports: {got} min." if got is not None else f"Set to {mins} min.")
+        out("The speaker powers off on its own; the app need not stay open.")
+
 async def cmd_eq_custom(args) -> None:
     """Apply a 6-band custom EQ, from --gains or a saved/built-in --profile."""
     profiles = config.eq_profiles()
@@ -476,6 +507,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--i-understand-the-risk", action="store_true",
                    help="required for --range: unknown opcodes could change the speaker")
     s.add_argument("--wait", type=float, default=1.0, help="seconds to wait for each reply")
+
+    s = command("timer", "native scheduled power-off: 'timer', 'timer 30', 'timer off'", cmd_timer)
+    s.add_argument("value", nargs="?", help="minutes, or 'off' to cancel; omit to show")
 
     s = command("eq-custom", "apply a 6-band custom EQ (--gains a,b,.. or --profile NAME; --list; --save NAME)", cmd_eq_custom)
     s.add_argument("--gains", help="six gains in dB, comma/space separated, e.g. 4,3,0,0,2,4")

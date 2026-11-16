@@ -27,14 +27,17 @@ EQ_GAIN_LIMIT = 6
 EQ_CUSTOM_LABEL_KEY = "eq_custom"  # i18n key for the "Custom EQ" entry
 
 # Built-in starting points. Users can edit these and save their own.
+# Conservative on purpose: the R990BT amplifier clips with large low-band
+# boosts, so bass is kept to +2 at most and peaks to +3. Users can push the
+# sliders further (up to +/-6) at their own risk.
 DEFAULT_EQ_PROFILES = {
     "Flat": (0, 0, 0, 0, 0, 0),
-    "Rock": (4, 2, -1, 1, 3, 4),
-    "Pop": (2, 1, 0, 2, 2, 1),
-    "Instrumental": (3, 1, 1, 2, 3, 2),
-    "Vocal": (-1, 0, 2, 4, 2, 0),
-    "Bass boost": (6, 4, 1, 0, 0, 0),
-    "Treble boost": (0, 0, 0, 1, 3, 5),
+    "Rock": (2, 1, -1, 0, 1, 2),
+    "Pop": (1, 1, 0, 1, 1, 0),
+    "Instrumental": (1, 0, 1, 1, 2, 1),
+    "Vocal": (-1, 0, 2, 2, 1, 0),
+    "Bass boost": (2, 2, 0, 0, 0, 0),
+    "Treble boost": (0, 0, 0, 1, 2, 2),
 }
 
 
