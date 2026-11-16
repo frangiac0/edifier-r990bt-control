@@ -25,7 +25,8 @@ Requires Windows 10 or 11 with Bluetooth 4.0 or later. The exe is not code-signe
 ## Features
 
 - **Input:** Bluetooth, Line 1, Line 2.
-- **Volume** (0 to 16, the speaker's own scale) and **EQ presets:** Music, Movie, Game.
+- **Volume** (0 to 16, the speaker's own scale) and **EQ:** the three presets (Music, Movie, Game) plus a **6-band custom EQ** with saveable profiles (Rock, Pop, and your own).
+- **Now playing:** shows the current track and artist over Bluetooth.
 - **Scenes:** save input + EQ combinations (for example *TV* = Line 1 + Movie) and apply them with one click, also from the tray.
 - **Sleep timer:** turns the speaker off after 15 minutes to 3 hours.
 - **Connect audio (Win+K):** opens the Windows panel to connect the PC to the speaker over Bluetooth.
@@ -94,6 +95,7 @@ edifier-cli source line1
 | `source bt\|line1\|line2` | Switch input |
 | `volume [N\|+N\|-N]` | Show or set the volume |
 | `eq music\|movie\|game` | Select an EQ preset |
+| `eq-custom --gains a,b,c,d,e,f` | Apply a 6-band custom EQ (`--profile NAME`, `--list`, `--save NAME`) |
 | `name [new name]` | Show or change the speaker name |
 | `tone [on\|off]` | Show or set the Bluetooth prompt tone |
 | `pair` | Disconnect the audio device and enter pairing mode |

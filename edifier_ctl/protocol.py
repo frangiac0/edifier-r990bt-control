@@ -19,6 +19,8 @@ REPLY_HEADERS = (0xBB, 0xCC)
 APP_CODES = (0xEC, 0xED)
 
 # Opcodes known from this speaker family.
+OP_SONG_NAME = 0x01         # current track title (pushed by the speaker)
+OP_SINGER_NAME = 0x02       # current track artist (pushed by the speaker)
 OP_CAPABILITIES = 0xD8
 OP_NAME = 0xC9
 OP_FIRMWARE = 0xC6

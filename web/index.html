@@ -41,6 +41,11 @@
   .card input, .card select { width:100%; font:inherit; padding:10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--fg); }
   .actions { margin-top:26px; }
   #unsupported { display:none; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-top:12px; }
+  .bands { display:flex; gap:6px; }
+  .bands .band { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .bands input[type=range] { writing-mode:vertical-lr; direction:rtl; width:28px; height:100px; accent-color:var(--chip-on); }
+  .bands .band small { color:var(--muted); font-size:11px; }
+  #nowplaying { margin:-6px 0 10px; min-height:16px; }
   footer { margin-top:28px; color:var(--muted); font-size:12px; text-align:center; }
   footer a { color:inherit; }
 </style>
@@ -49,6 +54,7 @@
 <main>
   <h1>Edifier R990BT</h1>
   <div id="status"></div>
+  <div id="nowplaying" class="hint"></div>
 
   <button id="connect" class="primary"></button>
   <div id="unsupported"></div>
@@ -67,6 +73,15 @@
 
     <h2 id="l-eq"></h2>
     <div class="row" id="presets"></div>
+    <div class="card" id="eq-custom" hidden>
+      <label id="l-eq-profile"></label>
+      <select id="eq-profile"></select>
+      <div class="bands" id="bands"></div>
+      <div class="row" style="margin-top:12px">
+        <button id="eq-save" class="small quiet"></button>
+        <button id="eq-del" class="small quiet"></button>
+      </div>
+    </div>
 
     <div class="head"><h2 id="l-scenes"></h2><button id="edit-scenes" class="small quiet"></button></div>
     <div class="scenes" id="scenes"></div>
@@ -104,6 +119,7 @@ const T = {
   en: {
     connect: "Connect to the speaker", reconnect: "Reconnect", disconnect: "Disconnect",
     input: "INPUT", volume: "VOLUME", eq: "EQUALIZER", scenes: "SCENES", edit: "Edit", done: "Done",
+    custom: "Custom", profile: "Profile", save: "Save as...", nameP: "Profile name:", nowPlaying: "Now playing: {track}",
     music: "Music", movie: "Movie", game: "Game",
     scenesEmpty: "No scenes yet. Use Edit to save an input and EQ combination.",
     scene: "Scene", name: "Name", sceneInput: "Input", sceneEq: "EQ", newScene: "New", del: "Delete",
@@ -121,6 +137,7 @@ const T = {
   es: {
     connect: "Conectar con el parlante", reconnect: "Reconectar", disconnect: "Desconectar",
     input: "ENTRADA", volume: "VOLUMEN", eq: "ECUALIZADOR", scenes: "ESCENAS", edit: "Editar", done: "Listo",
+    custom: "Personalizado", profile: "Perfil", save: "Guardar como...", nameP: "Nombre del perfil:", nowPlaying: "Suena: {track}",
     music: "Música", movie: "Película", game: "Juegos",
     scenesEmpty: "Todavía no hay escenas. Usá Editar para guardar una combinación de entrada y EQ.",
     scene: "Escena", name: "Nombre", sceneInput: "Entrada", sceneEq: "EQ", newScene: "Nueva", del: "Eliminar",
@@ -145,7 +162,15 @@ const ADVERTISED = "0000d300-0000-1000-8000-00805f9b34fb";
 const SERVICE = "4809d301-1a48-11e9-ab14-d663bd873d93";
 const NOTIFY = "48090001-1a48-11e9-ab14-d663bd873d93";
 const WRITE = "48090002-1a48-11e9-ab14-d663bd873d93";
-const OP = { SRC_GET: 0x61, SRC_SET: 0x62, VOL_GET: 0x66, VOL_SET: 0x67, EQ_GET: 0xD5, EQ_SET: 0xC4, OFF: 0xCE, PAIR: 0xCD };
+const OP = { SRC_GET: 0x61, SRC_SET: 0x62, VOL_GET: 0x66, VOL_SET: 0x67, EQ_GET: 0xD5, EQ_SET: 0xC4,
+  OFF: 0xCE, PAIR: 0xCD, CUSTOM_SET: 0x44, SONG: 0x01, SINGER: 0x02 };
+const EQ_BANDS = [60, 150, 400, 1000, 4000, 12000];
+const GAIN_LIMIT = 6;
+const DEFAULT_PROFILES = {
+  Flat: [0, 0, 0, 0, 0, 0], Rock: [4, 2, -1, 1, 3, 4], Pop: [2, 1, 0, 2, 2, 1],
+  Instrumental: [3, 1, 1, 2, 3, 2], Vocal: [-1, 0, 2, 4, 2, 0],
+  "Bass boost": [6, 4, 1, 0, 0, 0], "Treble boost": [0, 0, 0, 1, 3, 5],
+};
 const SOURCE_GROUP = 0x06;
 const SOURCES = [[1, "Bluetooth"], [2, "Line 1"], [3, "Line 2"]];
 const PRESETS = [[0, "music"], [2, "movie"], [1, "game"]];
@@ -174,14 +199,26 @@ function parse(bytes) {
 
 // ---- BLE link ----
 let device = null, writeChar = null, waiters = [], chain = Promise.resolve(), pollTimer = null;
-const state = { connected: false, source: null, volume: null, eq: null };
+const state = { connected: false, source: null, volume: null, eq: null,
+  eqMode: "preset", customGains: [0, 0, 0, 0, 0, 0], title: null, artist: null };
 
 function onNotify(e) {
   const v = e.target.value;
   for (const f of parse(new Uint8Array(v.buffer, v.byteOffset, v.byteLength))) {
     if (f.header === 0xAA) continue;
+    if (f.op === OP.SONG) state.title = decodeText(f.payload) || null;
+    else if (f.op === OP.SINGER) state.artist = decodeText(f.payload) || null;
+    if (f.op === OP.SONG || f.op === OP.SINGER) renderNowPlaying();
     waiters = waiters.filter((w) => (w.op === f.op ? (w.resolve(f), false) : true));
   }
+}
+
+function decodeText(bytes) {
+  try { return new TextDecoder("utf-8").decode(new Uint8Array(bytes)).trim(); } catch { return ""; }
+}
+function renderNowPlaying() {
+  const txt = [state.title, state.artist].filter(Boolean).join(" - ");
+  $("nowplaying").textContent = state.connected && txt ? t("nowPlaying", { track: txt }) : "";
 }
 
 async function send(bytes) {
@@ -267,6 +304,7 @@ async function connect() {
 let quietDisconnect = null;
 function onDisconnected() {
   state.connected = false;
+  state.title = null; state.artist = null;
   writeChar = null;
   clearInterval(pollTimer);
   setStatus(quietDisconnect || t("lost"));
@@ -306,9 +344,81 @@ const srcButtons = buttons("sources", SOURCES, async (c) => {
   await request(OP.SRC_SET, [SOURCE_GROUP, c]);
 });
 const eqButtons = buttons("presets", PRESETS.map(([c, k]) => [c, t(k)]), async (c) => {
-  state.eq = c; render();
+  state.eqMode = "preset"; state.eq = c; render();
   await request(OP.EQ_SET, [c]);
 });
+
+// Custom EQ button (reuses the chip style) + panel.
+const customBtn = document.createElement("button");
+customBtn.textContent = t("custom");
+customBtn.onclick = () => enterCustom();
+$("presets").appendChild(customBtn);
+
+const loadProfiles = () => {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem("eqProfiles") || "{}"); } catch {}
+  return { ...DEFAULT_PROFILES, ...saved };
+};
+const clampGains = (g) => EQ_BANDS.map((_, i) => Math.max(-GAIN_LIMIT, Math.min(GAIN_LIMIT, Math.round(g[i] || 0))));
+
+const bandInputs = EQ_BANDS.map((hz) => {
+  const wrap = document.createElement("div"); wrap.className = "band";
+  const r = document.createElement("input");
+  r.type = "range"; r.min = -GAIN_LIMIT; r.max = GAIN_LIMIT; r.step = 1; r.value = 0;
+  r.oninput = () => applyBands();
+  const lab = document.createElement("small");
+  lab.textContent = hz >= 1000 ? hz / 1000 + "k" : hz;
+  wrap.append(r, lab); $("bands").appendChild(wrap);
+  return r;
+});
+
+const profileSel = $("eq-profile");
+function reloadProfiles(select) {
+  const p = loadProfiles();
+  profileSel.innerHTML = "";
+  Object.keys(p).forEach((n) => profileSel.add(new Option(n, n)));
+  if (select && p[select]) profileSel.value = select;
+  return p;
+}
+profileSel.onchange = () => {
+  const p = loadProfiles()[profileSel.value];
+  if (p) { setBands(p); applyBands(profileSel.value); }
+};
+const setBands = (g) => bandInputs.forEach((r, i) => (r.value = g[i]));
+const currentBands = () => clampGains(bandInputs.map((r) => +r.value));
+
+async function sendCustom(gains) {
+  for (let b = 0; b < EQ_BANDS.length; b++) {
+    const hz = EQ_BANDS[b], g = gains[b] & 0xFF;
+    await request(OP.CUSTOM_SET, [b, (hz >> 8) & 0xFF, hz & 0xFF, g], false);
+  }
+}
+async function applyBands(name) {
+  state.eqMode = "custom"; state.customGains = currentBands(); render();
+  await sendCustom(state.customGains);
+  try { localStorage.setItem("eqLast", JSON.stringify({ gains: state.customGains, name: name || null })); } catch {}
+}
+function enterCustom() {
+  reloadProfiles();
+  const g = state.customGains.some(Boolean) ? state.customGains : (loadProfiles().Flat || [0,0,0,0,0,0]);
+  setBands(g); applyBands();
+}
+$("eq-save").onclick = () => {
+  const name = prompt(t("nameP"));
+  if (!name) return;
+  const saved = (() => { try { return JSON.parse(localStorage.getItem("eqProfiles") || "{}"); } catch { return {}; } })();
+  saved[name.trim()] = currentBands();
+  try { localStorage.setItem("eqProfiles", JSON.stringify(saved)); } catch {}
+  reloadProfiles(name.trim());
+};
+$("eq-del").onclick = () => {
+  const name = profileSel.value;
+  if (!name || name in DEFAULT_PROFILES) return;
+  const saved = (() => { try { return JSON.parse(localStorage.getItem("eqProfiles") || "{}"); } catch { return {}; } })();
+  delete saved[name];
+  try { localStorage.setItem("eqProfiles", JSON.stringify(saved)); } catch {}
+  reloadProfiles();
+};
 
 const vol = $("volume");
 let dragging = false;
@@ -389,8 +499,12 @@ function render() {
   $("connect").classList.toggle("quiet", on);
   $("connect").classList.toggle("primary", !on);
   srcButtons.forEach((b) => { b.disabled = !on; b.classList.toggle("on", on && +b.dataset.code === state.source); });
-  eqButtons.forEach((b) => { b.disabled = !on; b.classList.toggle("on", on && +b.dataset.code === state.eq); });
+  eqButtons.forEach((b) => { b.disabled = !on; b.classList.toggle("on", on && state.eqMode === "preset" && +b.dataset.code === state.eq); });
+  customBtn.disabled = !on;
+  customBtn.classList.toggle("on", on && state.eqMode === "custom");
+  $("eq-custom").hidden = !(on && state.eqMode === "custom");
   [vol, $("vdown"), $("vup"), $("pair"), $("off")].forEach((el) => (el.disabled = !on));
+  renderNowPlaying();
   if (!dragging) vol.value = state.volume ?? 0;
   $("vout").textContent = on && state.volume != null ? `${state.volume} / ${VOLUME_MAX}` : "-";
   renderScenes();
@@ -399,6 +513,7 @@ function render() {
 // Static texts
 const texts = {
   "l-input": "input", "l-volume": "volume", "l-eq": "eq", "l-scenes": "scenes", "edit-scenes": "edit",
+  "l-eq-profile": "profile", "eq-save": "save", "eq-del": "del",
   "l-scene-pick": "scene", "l-scene-name": "name", "l-scene-source": "sceneInput", "l-scene-eq": "sceneEq",
   "scene-new": "newScene", "scene-del": "del", "scene-done": "done", pair: "pair", off: "off", foot: "foot",
 };

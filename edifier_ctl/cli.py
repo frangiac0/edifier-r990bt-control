@@ -230,6 +230,47 @@ async def cmd_pair(args) -> None:
         out("Connect the new device to EDIFIER R990BT. Control commands work again in a minute or two.")
 
 
+async def cmd_eq_custom(args) -> None:
+    """Apply a 6-band custom EQ, from --gains or a saved/built-in --profile."""
+    profiles = config.eq_profiles()
+    if args.list:
+        out("EQ profiles (gains for 60/150/400/1k/4k/12k Hz):")
+        for name, gains in profiles.items():
+            out(f"  {name}: {', '.join(f'{g:+d}' for g in gains)}")
+        return
+    if args.gains:
+        try:
+            gains = [int(x) for x in args.gains.replace(",", " ").split()]
+        except ValueError:
+            out("--gains takes six integers, e.g. --gains 4,3,0,0,2,4")
+            raise SystemExit(2)
+        if len(gains) != len(r990bt.EQ_BANDS_HZ):
+            out(f"--gains needs exactly {len(r990bt.EQ_BANDS_HZ)} values.")
+            raise SystemExit(2)
+        name = args.save
+    elif args.profile:
+        match = next((n for n in profiles if n.lower() == args.profile.lower()), None)
+        if match is None:
+            out(f"No profile '{args.profile}'. Use 'eq-custom --list'.")
+            raise SystemExit(2)
+        gains, name = profiles[match], match
+    else:
+        out("Give --gains a,b,c,d,e,f or --profile NAME (see --list).")
+        raise SystemExit(2)
+
+    gains = r990bt.clamp_gains(gains)
+    if args.save:
+        config.save_eq_profile(args.save, gains)
+        out(f"Saved profile '{args.save}'.")
+    address = await resolve_address(args.address)
+    async with EdifierClient(address, on_frame=show_frame) as client:
+        out(f"Applying custom EQ: {', '.join(f'{g:+d}' for g in gains)}")
+        for opcode, payload in r990bt.custom_eq_frames(gains):
+            await client.request(opcode, payload, timeout=1.0)
+            await asyncio.sleep(0.05)
+    config.set_values(eq_mode="custom", custom_gains=list(gains), custom_name=name)
+    out("Done. Select a preset (eq music|movie|game) to leave custom mode.")
+
 async def cmd_eq_test(args) -> None:
     """Experimental: check whether the firmware applies a custom EQ.
 
@@ -435,6 +476,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--i-understand-the-risk", action="store_true",
                    help="required for --range: unknown opcodes could change the speaker")
     s.add_argument("--wait", type=float, default=1.0, help="seconds to wait for each reply")
+
+    s = command("eq-custom", "apply a 6-band custom EQ (--gains a,b,.. or --profile NAME; --list; --save NAME)", cmd_eq_custom)
+    s.add_argument("--gains", help="six gains in dB, comma/space separated, e.g. 4,3,0,0,2,4")
+    s.add_argument("--profile", help="apply a saved or built-in profile by name")
+    s.add_argument("--save", metavar="NAME", help="save the gains as a profile")
+    s.add_argument("--list", action="store_true", help="list available profiles")
 
     s = command("eq-test", "experimental: test whether the firmware applies a custom EQ (writes, then restores)", cmd_eq_test)
     s.add_argument("--gain", type=int, default=4, help="bass boost in dB, clamped to +/-6 (default 4)")

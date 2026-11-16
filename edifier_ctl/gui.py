@@ -28,6 +28,7 @@ try:  # The tray icon is optional: without pystray the app still works.
 except Exception:  # library missing or no tray support
     pystray = None
 
+CUSTOM_EQ = -2  # eq_var value meaning "custom EQ mode"
 TIMER_MINUTES = (15, 30, 45, 60, 90, 120, 180)
 
 
@@ -169,7 +170,10 @@ class App:
         if sys.platform == "win32":
             ttk.Button(title, text=t("connect_audio"), command=open_connect_flyout).pack(side="right")
         self.status_var = tk.StringVar(value=self._state.status)
-        ttk.Label(frame, textvariable=self.status_var, style="Muted.TLabel", wraplength=300).pack(anchor="w", pady=(2, 14))
+        ttk.Label(frame, textvariable=self.status_var, style="Muted.TLabel", wraplength=300).pack(anchor="w", pady=(2, 2))
+        self.now_var = tk.StringVar(value="")
+        self.now_label = ttk.Label(frame, textvariable=self.now_var, style="Muted.TLabel", wraplength=300)
+        self.now_label.pack(anchor="w", pady=(0, 12))
 
         # Shown only when a newer release is found.
         self.update_bar = ttk.Frame(frame)
@@ -225,6 +229,11 @@ class App:
                                 command=lambda c=code: self.controller.set_eq(c))
             b.pack(side="left", padx=(0, 12))
             self.eq_buttons.append(b)
+        self.btn_custom = ttk.Radiobutton(erow, text=t("eq_custom"), value=CUSTOM_EQ, variable=self.eq_var,
+                                          command=self._on_custom_selected)
+        self.btn_custom.pack(side="left", padx=(0, 12))
+        self.eq_buttons.append(self.btn_custom)
+        self._build_custom_eq(frame)
 
         shead = ttk.Frame(frame)
         shead.pack(fill="x", pady=(16, 0))
@@ -402,7 +411,16 @@ class App:
         self.status_var.set(st.status)
         self._set_enabled(st.connected)
         self.source_var.set(st.source if st.source is not None else -1)
-        self.eq_var.set(st.eq if st.eq is not None else -1)
+        if st.eq_mode == "custom":
+            self.eq_var.set(CUSTOM_EQ)
+            if not getattr(self, "_dragging_band", False):
+                self._set_band_vars(st.custom_gains)
+            if st.custom_name and st.custom_name in self._profiles:
+                self.eq_profile_var.set(st.custom_name)
+        else:
+            self.eq_var.set(st.eq if st.eq is not None else -1)
+        now = " - ".join(x for x in (st.track_title, st.track_artist) if x)
+        self.now_var.set(t("now_playing", track=now) if now else "")
         self.volume_scale.configure(to=st.volume_max)
         if st.volume is not None and not self._dragging_volume:
             self.volume_var.set(st.volume)
@@ -416,10 +434,98 @@ class App:
         state = "normal" if enabled else "disabled"
         for b in self.source_buttons:
             b.configure(state=state)
-        for w in (self.btn_down, self.btn_up, self.volume_scale, self.btn_power, self.btn_pair, *self.eq_buttons, *self.scene_buttons):
+        for w in (self.btn_down, self.btn_up, self.volume_scale, self.btn_power, self.btn_pair,
+                  self.eq_profile_box, self.btn_eq_save, self.btn_eq_delete, *self.band_scales,
+                  *self.eq_buttons, *self.scene_buttons):
             w.state(["!disabled"] if enabled else ["disabled"])
 
     # --- Settings, keep-alive and phone remote ---
+
+    # --- Custom EQ ---
+
+    def _build_custom_eq(self, parent) -> None:
+        self.custom_frame = ttk.Frame(parent)
+        self.custom_frame.pack(fill="x")
+        top = ttk.Frame(self.custom_frame)
+        top.pack(fill="x", pady=(8, 0))
+        ttk.Label(top, text=t("eq_profile"), style="Muted.TLabel").pack(side="left")
+        self.eq_profile_var = tk.StringVar(value="")
+        self.eq_profile_box = ttk.Combobox(top, textvariable=self.eq_profile_var, state="readonly", width=16)
+        self.eq_profile_box.pack(side="left", padx=(8, 0))
+        self.eq_profile_box.bind("<<ComboboxSelected>>", lambda e: self._on_profile_selected())
+        self._reload_profiles()
+
+        bands = ttk.Frame(self.custom_frame)
+        bands.pack(fill="x", pady=(10, 0))
+        self.band_vars = []
+        self.band_scales = []
+        for i, hz in enumerate(r990bt.EQ_BANDS_HZ):
+            col = ttk.Frame(bands)
+            col.pack(side="left", expand=True, fill="x")
+            var = tk.DoubleVar(value=0)
+            scale = ttk.Scale(col, from_=r990bt.EQ_GAIN_LIMIT, to=-r990bt.EQ_GAIN_LIMIT,
+                              orient="vertical", length=90, variable=var,
+                              command=lambda v, idx=i: self._on_band_drag(idx))
+            scale.pack()
+            scale.bind("<ButtonPress-1>", lambda e: setattr(self, "_dragging_band", True))
+            scale.bind("<ButtonRelease-1>", lambda e: (setattr(self, "_dragging_band", False), self._apply_bands()))
+            label = "12k" if hz >= 1000 and hz % 1000 == 0 else (f"{hz // 1000}k" if hz >= 1000 else str(hz))
+            ttk.Label(col, text=label, style="Muted.TLabel").pack()
+            self.band_vars.append(var)
+            self.band_scales.append(scale)
+
+        btns = ttk.Frame(self.custom_frame)
+        btns.pack(fill="x", pady=(6, 0))
+        self.btn_eq_save = ttk.Button(btns, text=t("eq_save_as"), command=self._save_eq_profile)
+        self.btn_eq_save.pack(side="left")
+        self.btn_eq_delete = ttk.Button(btns, text=t("scene_delete"), command=self._delete_eq_profile)
+        self.btn_eq_delete.pack(side="left", padx=(8, 0))
+
+    def _reload_profiles(self) -> None:
+        self._profiles = config.eq_profiles()
+        self.eq_profile_box.configure(values=list(self._profiles.keys()))
+
+    def _set_band_vars(self, gains) -> None:
+        for var, g in zip(self.band_vars, gains):
+            var.set(g)
+
+    def _current_bands(self) -> tuple:
+        return r990bt.clamp_gains([round(v.get()) for v in self.band_vars])
+
+    def _on_custom_selected(self) -> None:
+        gains = self._state.custom_gains if any(self._state.custom_gains) else self._profiles.get(
+            self.eq_profile_var.get() or "Flat", (0,) * 6)
+        self._set_band_vars(gains)
+        self.controller.set_custom_eq(gains, self.eq_profile_var.get() or None)
+
+    def _on_profile_selected(self) -> None:
+        name = self.eq_profile_var.get()
+        if name in self._profiles:
+            self._set_band_vars(self._profiles[name])
+            self.controller.set_custom_eq(self._profiles[name], name)
+
+    def _on_band_drag(self, idx: int) -> None:
+        pass  # live label could go here; applied on release
+
+    def _apply_bands(self) -> None:
+        self.controller.set_custom_eq(self._current_bands(), self.eq_profile_var.get() or None)
+
+    def _save_eq_profile(self) -> None:
+        from tkinter import simpledialog
+
+        name = simpledialog.askstring(t("eq_save_as"), t("eq_name_prompt"), parent=self.root)
+        if not name:
+            return
+        config.save_eq_profile(name.strip(), self._current_bands())
+        self._reload_profiles()
+        self.eq_profile_var.set(name.strip())
+
+    def _delete_eq_profile(self) -> None:
+        name = self.eq_profile_var.get()
+        if name and name not in r990bt.DEFAULT_EQ_PROFILES:
+            config.delete_eq_profile(name)
+            self._reload_profiles()
+            self.eq_profile_var.set("")
 
     # --- Scenes ---
 

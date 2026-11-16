@@ -36,6 +36,11 @@ class State:
     volume_max: int = r990bt.VOLUME_MAX
     eq: int | None = None
     prompt_tone: bool | None = None
+    eq_mode: str = "preset"          # "preset" or "custom"
+    custom_gains: tuple = (0, 0, 0, 0, 0, 0)
+    custom_name: str | None = None
+    track_title: str | None = None
+    track_artist: str | None = None
 
 
 class Controller:
@@ -50,6 +55,15 @@ class Controller:
         self._hold: dict[str, float] = {}
         self._powered_off = False
         self._pairing_until = 0.0
+        # Remember the last EQ mode so a saved custom curve is reapplied on connect.
+        mode = config.get("eq_mode", "preset")
+        if mode == "custom":
+            gains = r990bt.clamp_gains(config.get("custom_gains", (0,) * 6))
+            self._state = replace(self._state, eq_mode="custom", custom_gains=gains,
+                                  custom_name=config.get("custom_name"))
+            self._apply_custom_on_connect = True
+        else:
+            self._apply_custom_on_connect = False
 
     # --- API for the GUI (any thread) ---
 
@@ -76,6 +90,9 @@ class Controller:
 
     def set_eq(self, preset: int) -> None:
         self._submit(self._do_set_eq(preset))
+
+    def set_custom_eq(self, gains, name: str | None = None) -> None:
+        self._submit(self._do_set_custom_eq(tuple(gains), name))
 
     def set_prompt_tone(self, enabled: bool) -> None:
         self._submit(self._do_set_prompt_tone(enabled))
@@ -151,7 +168,7 @@ class Controller:
             return
         if not self._powered_off and time.monotonic() >= self._pairing_until:
             self._update(status=t("connecting"))
-        client = EdifierClient(address)
+        client = EdifierClient(address, on_frame=self._on_frame)
         self._client = client
         await client.connect()
         config.remember_address(client.address)
@@ -161,6 +178,8 @@ class Controller:
         self._powered_off = False
         self._update(connected=True, name=name, status=t("connected", name=name))
         await self._refresh_prompt_tone()
+        if self._apply_custom_on_connect and self._state.eq_mode == "custom":
+            await self._send_custom_eq(self._state.custom_gains)
 
         misses = 0
         while not self._stopping:
@@ -169,6 +188,17 @@ class Controller:
             if misses >= 3 or not client.is_connected:
                 raise ConnectionError("speaker stopped responding")
             await asyncio.sleep(POLL_SECONDS)
+
+    def _on_frame(self, frame: p.Frame) -> None:
+        # The speaker pushes the current track title (0x01) and artist (0x02).
+        if frame.opcode == p.OP_SONG_NAME:
+            title = frame.payload.decode("utf-8", "replace").strip() or None
+            if title != self._state.track_title:
+                self._update(track_title=title)
+        elif frame.opcode == p.OP_SINGER_NAME:
+            artist = frame.payload.decode("utf-8", "replace").strip() or None
+            if artist != self._state.track_artist:
+                self._update(track_artist=artist)
 
     async def _request(self, opcode: int, payload: bytes = b"") -> p.Frame | None:
         assert self._lock is not None
@@ -261,7 +291,21 @@ class Controller:
     async def _do_set_eq(self, preset: int) -> None:
         await self._request(p.OP_EQ_SET, bytes([preset]))
         self._hold["eq"] = time.monotonic() + HOLD_SECONDS
-        self._update(eq=preset)
+        self._apply_custom_on_connect = False
+        config.set_values(eq_mode="preset")
+        self._update(eq=preset, eq_mode="preset", custom_name=None)
+
+    async def _send_custom_eq(self, gains) -> None:
+        for opcode, payload in r990bt.custom_eq_frames(gains):
+            await self._request(opcode, payload)
+            await asyncio.sleep(0.05)
+
+    async def _do_set_custom_eq(self, gains, name) -> None:
+        gains = r990bt.clamp_gains(gains)
+        await self._send_custom_eq(gains)
+        self._apply_custom_on_connect = True
+        config.set_values(eq_mode="custom", custom_gains=list(gains), custom_name=name)
+        self._update(eq_mode="custom", custom_gains=gains, custom_name=name)
 
     async def _shutdown(self) -> None:
         for task in asyncio.all_tasks(self._loop):
