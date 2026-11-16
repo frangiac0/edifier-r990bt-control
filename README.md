@@ -20,6 +20,7 @@ Requirements: Windows 10 or 11 with Bluetooth 4.0 or later. Most laptops have it
 - **Volume:** slider and `-` / `+` buttons (0 to 16, the speaker's own scale).
 - **EQ:** the speaker's three presets: Music, Movie and Game.
 - **Settings...:** rename the speaker (up to 30 characters) and turn the Bluetooth connection prompt tone on or off.
+- **Pair new device:** disconnects the current Bluetooth audio device and leaves the speaker in pairing mode (blue LED blinking), like holding its Bluetooth button. The app loses the speaker for a minute or two and then reconnects by itself. To reconnect a Windows PC afterwards, press `Win + K` and pick the speaker.
 - **Turn off:** powers the speaker down. It can only be turned back on with its knob; the app reconnects by itself when it is.
 
 ### Prevent auto-mute
@@ -71,6 +72,7 @@ edifier-cli eq movie
 | `eq music\|movie\|game` | Select an EQ preset |
 | `name [new name]` | Show or change the speaker name |
 | `tone [on\|off]` | Show or set the Bluetooth prompt tone |
+| `pair` | Disconnect the audio device and enter pairing mode |
 | `off` | Turn the speaker off |
 | `info` | Show capabilities, name, firmware, input, volume and EQ |
 | `scan [--all]` | List nearby Edifier (or all) BLE devices |
@@ -119,6 +121,7 @@ Verified on an R990BT with firmware 1.0.2. Each change was set, acknowledged and
 | Firmware | `AA EC C6 00 00 5C` | | 3 bytes |
 | Capabilities | `AA EC D8 00 00 6E` | | 22 bytes |
 | Power off | | `AA EC CE 00 00 64` | no reply; the speaker turns off |
+| Disconnect audio | | `AA EC CD 00 00 63` | no reply; pairing mode, BLE drops for 1-2 min |
 
 After an input change the speaker also sends `0xC3` notifications with the state of the Bluetooth audio link.
 

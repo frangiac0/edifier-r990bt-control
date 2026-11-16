@@ -219,6 +219,14 @@ async def cmd_tone(args) -> None:
         out("Prompt tone: " + ("unknown (no reply)" if state is None else "on" if state else "off"))
 
 
+async def cmd_pair(args) -> None:
+    address = await resolve_address(args.address)
+    async with EdifierClient(address) as client:
+        await client.disconnect_audio()
+        out("Audio device disconnected; the speaker is in pairing mode.")
+        out("Connect the new device to EDIFIER R990BT. Control commands work again in a minute or two.")
+
+
 async def cmd_send(args) -> None:
     address = await resolve_address(args.address)
     payload = p.parse_hex(" ".join(args.payload)) if args.payload else b""
@@ -265,6 +273,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = command("tone", "show the Bluetooth prompt tone setting, or turn it on/off", cmd_tone)
     s.add_argument("state", nargs="?", choices=["on", "off"])
 
+    command("pair", "disconnect the audio device and put the speaker in pairing mode", cmd_pair)
     command("off", "turn the speaker off (it can only be turned on with the knob)", cmd_off)
     command("forget", "forget the saved speaker and search again next time", cmd_forget, address=False)
 

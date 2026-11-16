@@ -165,6 +165,8 @@ class App:
         brow.pack(fill="x", pady=(18, 0))
         self.btn_settings = ttk.Button(brow, text=t("settings"), command=self._show_settings)
         self.btn_settings.pack(side="left")
+        self.btn_pair = ttk.Button(brow, text=t("pair"), command=self._confirm_pair)
+        self.btn_pair.pack(side="left", padx=(8, 0))
         self.btn_power = ttk.Button(brow, text=t("power_off"), command=self._confirm_power_off)
         self.btn_power.pack(side="right")
         self._settings_window = None
@@ -197,6 +199,7 @@ class App:
         menu = pystray.Menu(
             *items,
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem(t("pair"), lambda: self._events.put(("pair", None))),
             pystray.MenuItem(t("show_window"), lambda: self._events.put(("show", None)), default=True),
             pystray.MenuItem(t("quit"), lambda: self._events.put(("quit", None))),
         )
@@ -215,6 +218,10 @@ class App:
                     self.root.deiconify()
                     self.root.lift()
                     self.root.focus_force()
+                elif kind == "pair":
+                    self.root.deiconify()
+                    self.root.lift()
+                    self._confirm_pair()
                 elif kind == "name_result":
                     win = self._settings_window
                     if win is not None and win.winfo_exists():
@@ -250,7 +257,7 @@ class App:
         state = "normal" if enabled else "disabled"
         for b in self.source_buttons:
             b.configure(state=state)
-        for w in (self.btn_down, self.btn_up, self.volume_scale, self.btn_power, self.btn_settings, *self.eq_buttons):
+        for w in (self.btn_down, self.btn_up, self.volume_scale, self.btn_power, self.btn_settings, self.btn_pair, *self.eq_buttons):
             w.state(["!disabled"] if enabled else ["disabled"])
 
     # --- Settings, keep-alive and phone remote ---
@@ -293,6 +300,7 @@ class App:
                 set_eq=lambda p: self.controller.set_eq(p),
                 set_keepalive=lambda en, lvl: self._events.put(("keepalive", (en, lvl))),
                 power_off=lambda: self.controller.power_off(),
+                pair=lambda: self.controller.pair(),
             )
             self.web = web.WebRemote(target, key=key, port=port)
             try:
@@ -396,6 +404,10 @@ class App:
         if st.prompt_tone is not None:
             win._tone_var.set(st.prompt_tone)
             win._tone.state(["!disabled"] if st.connected else ["disabled"])
+
+    def _confirm_pair(self) -> None:
+        if messagebox.askyesno("Edifier R990BT", t("pair_confirm"), parent=self.root):
+            self.controller.pair()
 
     def _confirm_power_off(self) -> None:
         if messagebox.askyesno("Edifier R990BT", t("power_off_confirm"), icon="warning", parent=self.root):

@@ -153,6 +153,11 @@ class EdifierClient:
         """Turn the speaker off. It sends no reply and cannot be turned back on over BLE."""
         await self.send_raw(p.build(p.OP_POWER_OFF))
 
+    async def disconnect_audio(self) -> None:
+        """Drop the connected Bluetooth audio device; the speaker then waits in pairing mode.
+        The BLE control link drops too and comes back after a minute or so."""
+        await self.send_raw(p.build(p.OP_DISCONNECT_AUDIO))
+
     async def get_name(self) -> str | None:
         frame = await self.request(p.OP_NAME)
         return frame.payload.decode("utf-8", "replace").strip() if frame else None

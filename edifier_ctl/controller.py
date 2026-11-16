@@ -22,6 +22,8 @@ POLL_SECONDS = 2.0
 # After a change, the speaker takes a few seconds to report the new value.
 HOLD_SECONDS = 4.0
 RETRY_SECONDS = 5.0
+# After "pair", the BLE link drops for a minute or two; keep showing pairing mode meanwhile.
+PAIRING_STATUS_SECONDS = 180.0
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,7 @@ class Controller:
         self._stopping = False
         self._hold: dict[str, float] = {}
         self._powered_off = False
+        self._pairing_until = 0.0
 
     # --- API for the GUI (any thread) ---
 
@@ -80,6 +83,9 @@ class Controller:
     def set_name(self, name: str, on_done: Callable[[bool], None] | None = None) -> None:
         self._submit(self._do_set_name(name, on_done))
 
+    def pair(self) -> None:
+        self._submit(self._do_pair())
+
     def power_off(self) -> None:
         self._submit(self._do_power_off())
 
@@ -112,6 +118,8 @@ class Controller:
             except Exception as exc:  # any BLE failure: retry
                 if self._powered_off:
                     self._update(connected=False, status=t("powered_off"))
+                elif time.monotonic() < self._pairing_until:
+                    self._update(connected=False, status=t("pairing_status"))
                 else:
                     self._update(connected=False, status=t("retrying", error=type(exc).__name__))
             finally:
@@ -122,7 +130,10 @@ class Controller:
                         pass
                     self._client = None
             if not self._stopping:
-                await asyncio.sleep(RETRY_SECONDS)
+                try:
+                    await asyncio.sleep(RETRY_SECONDS)
+                except asyncio.CancelledError:
+                    break
 
     async def _find_address(self):
         saved = config.saved_address()
@@ -138,7 +149,7 @@ class Controller:
         address = await self._find_address()
         if address is None:
             return
-        if not self._powered_off:
+        if not self._powered_off and time.monotonic() >= self._pairing_until:
             self._update(status=t("connecting"))
         client = EdifierClient(address)
         self._client = client
@@ -222,6 +233,18 @@ class Controller:
         finally:
             if on_done:
                 on_done(ok)
+
+    async def _do_pair(self) -> None:
+        if self._client is None or self._lock is None:
+            return
+        self._pairing_until = time.monotonic() + PAIRING_STATUS_SECONDS
+        async with self._lock:
+            await self._client.disconnect_audio()
+        self._update(connected=False, status=t("pairing_status"))
+        try:
+            await self._client.disconnect()
+        except Exception:
+            pass
 
     async def _do_power_off(self) -> None:
         if self._client is None or self._lock is None:

@@ -47,6 +47,7 @@ class RemoteTarget:
         set_eq: Callable[[int], None],
         set_keepalive: Callable[[bool, int | None], None],
         power_off: Callable[[], None],
+        pair: Callable[[], None],
     ) -> None:
         self.get_state = get_state
         self.set_source = set_source
@@ -54,6 +55,7 @@ class RemoteTarget:
         self.set_eq = set_eq
         self.set_keepalive = set_keepalive
         self.power_off = power_off
+        self.pair = pair
 
 
 class WebRemote:
@@ -158,6 +160,8 @@ class _Handler(BaseHTTPRequestHandler):
                 tgt.set_keepalive(bool(body["enabled"]), int(level) if level is not None else None)
             elif url.path == "/api/power_off":
                 tgt.power_off()
+            elif url.path == "/api/pair":
+                tgt.pair()
             else:
                 self._json(404, {"error": "not found"})
                 return
@@ -172,6 +176,7 @@ def render_page() -> str:
         "input": t("input"), "volume": t("volume"), "eq": t("eq"),
         "keepalive": t("keepalive"), "keepalive_hint": t("keepalive_hint"),
         "power_off": t("power_off"), "power_off_confirm": t("power_off_confirm"),
+        "pair": t("pair"), "pair_confirm": t("pair_confirm"),
         "offline": t("web_offline"),
     }
     data = {
@@ -213,6 +218,7 @@ input[type=range] { width:100%; accent-color:var(--accent); height:32px; }
 label.switch { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 label.switch input { width:22px; height:22px; accent-color:var(--accent); }
 .hint { color:var(--muted); font-size:13px; margin:8px 0 10px; }
+button.wide { width:100%; margin-bottom:12px; }
 #power { width:100%; background:transparent; color:var(--danger); border:1px solid var(--danger); }
 </style>
 </head>
@@ -231,6 +237,7 @@ label.switch input { width:22px; height:22px; accent-color:var(--accent); }
     <div class="hint" id="l-ka-hint"></div>
     <div class="row" id="levels"></div>
   </section>
+  <button id="pair" class="wide"></button>
   <button id="power"></button>
 </main>
 <script>
@@ -245,6 +252,7 @@ $("l-eq").textContent = D.t.eq;
 $("l-ka").textContent = D.t.keepalive;
 $("l-ka-hint").textContent = D.t.keepalive_hint;
 $("power").textContent = D.t.power_off;
+$("pair").textContent = D.t.pair;
 
 function post(path, body) {
   return fetch(path + "?k=" + encodeURIComponent(KEY), {
@@ -271,6 +279,7 @@ $("vdown").onclick = () => state && post("/api/volume", {volume: state.volume - 
 $("vup").onclick = () => state && post("/api/volume", {volume: state.volume + 1});
 $("ka").onchange = (e) => post("/api/keepalive", {enabled: e.target.checked});
 $("power").onclick = () => { if (confirm(D.t.power_off_confirm)) post("/api/power_off"); };
+$("pair").onclick = () => { if (confirm(D.t.pair_confirm)) post("/api/pair"); };
 
 function render(s) {
   state = s;
@@ -278,7 +287,7 @@ function render(s) {
   const on = s.connected;
   srcButtons.forEach((b) => { b.disabled = !on; b.classList.toggle("on", +b.dataset.code === s.source); });
   eqButtons.forEach((b) => { b.disabled = !on; b.classList.toggle("on", +b.dataset.code === s.eq); });
-  [vol, $("vdown"), $("vup"), $("power")].forEach((el) => el.disabled = !on);
+  [vol, $("vdown"), $("vup"), $("power"), $("pair")].forEach((el) => el.disabled = !on);
   vol.max = s.volume_max;
   if (!dragging && s.volume != null) { vol.value = s.volume; $("vol-text").textContent = s.volume + " / " + s.volume_max; }
   $("ka-section").style.display = s.keepalive_available ? "" : "none";
