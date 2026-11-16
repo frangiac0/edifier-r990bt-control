@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -20,7 +21,8 @@ from pathlib import Path
 from . import __version__
 
 RELEASES_REPO = "frangiac0/edifier-r990bt-control"
-ASSET_NAME = "EdifierR990BT.exe"
+PORTABLE_ASSET = "EdifierR990BT.exe"
+SETUP_ASSET = "EdifierR990BT-Setup.exe"
 UPDATED_FLAG = "--updated"
 _TIMEOUT = 15
 
@@ -65,7 +67,8 @@ def check() -> Release | None:
     tag = data.get("tag_name") or ""
     if not tag or _parse(tag) <= _parse(__version__):
         return None
-    asset = next((a for a in data.get("assets", []) if a.get("name") == ASSET_NAME), None)
+    wanted = SETUP_ASSET if is_installed() else PORTABLE_ASSET
+    asset = next((a for a in data.get("assets", []) if a.get("name") == wanted), None)
     return Release(
         version=tag.lstrip("v"),
         page_url=data.get("html_url") or f"https://github.com/{RELEASES_REPO}/releases/latest",
@@ -103,27 +106,56 @@ def can_self_update() -> bool:
     return sys.platform == "win32" and getattr(sys, "frozen", False)
 
 
+def is_installed() -> bool:
+    """True for the copy installed by the setup program (it has an uninstaller
+    next to it); False for the portable exe."""
+    return can_self_update() and Path(sys.executable).with_name("unins000.exe").exists()
+
+
+_pending_setup: Path | None = None
+
+
+def _download(url: str, dest: Path, sha256: str) -> None:
+    sha = hashlib.sha256()
+    try:
+        with _request(url) as resp, open(dest, "wb") as f:
+            while chunk := resp.read(1 << 16):
+                f.write(chunk)
+                sha.update(chunk)
+    except OSError:
+        dest.unlink(missing_ok=True)
+        raise
+    if sha.hexdigest() != sha256:
+        dest.unlink(missing_ok=True)
+        raise UpdateError("checksum mismatch")
+
+
 def _old_path(exe: Path) -> Path:
     return exe.with_name(exe.stem + ".old.exe")
 
 
 def install(release: Release) -> None:
-    """Download the new exe next to the running one and swap them. Windows
-    allows renaming a running exe, so no helper script is needed. The caller
-    must then call restart() and quit."""
+    """Prepare the update. The caller must then call restart() and quit.
+
+    Installed copy: download the setup program, which restart() runs silently;
+    it waits for the app to close, replaces it and opens it again.
+    Portable exe: download the new exe next to the running one and swap them
+    (Windows allows renaming a running exe)."""
+    global _pending_setup
     if not (can_self_update() and release.asset_url and release.sha256):
         raise UpdateError("manual")
+    if is_installed():
+        setup = Path(tempfile.gettempdir()) / f"EdifierR990BT-Setup-{release.version}.exe"
+        try:
+            _download(release.asset_url, setup, release.sha256)
+        except OSError as e:
+            raise UpdateError(str(e)) from e
+        _pending_setup = setup
+        return
     exe = Path(sys.executable)
     new = exe.with_name(exe.stem + ".new.exe")
     try:
-        sha = hashlib.sha256()
-        with _request(release.asset_url) as resp, open(new, "wb") as f:
-            while chunk := resp.read(1 << 16):
-                f.write(chunk)
-                sha.update(chunk)
-        if sha.hexdigest() != release.sha256:
-            new.unlink(missing_ok=True)
-            raise UpdateError("checksum mismatch")
+        _download(release.asset_url, new, release.sha256)
         old = _old_path(exe)
         old.unlink(missing_ok=True)
         exe.rename(old)
@@ -138,7 +170,10 @@ def install(release: Release) -> None:
 
 
 def restart() -> None:
-    spawn([sys.executable, UPDATED_FLAG])
+    if _pending_setup is not None:
+        spawn([str(_pending_setup), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/RELAUNCH=1"])
+    else:
+        spawn([sys.executable, UPDATED_FLAG])
 
 
 def spawn(args: list[str]) -> None:

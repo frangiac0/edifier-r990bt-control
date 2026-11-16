@@ -51,6 +51,7 @@ jobs:
           name: edifier-r990bt-control-windows
           path: |
             dist/EdifierR990BT.exe
+            dist/EdifierR990BT-Setup.exe
             dist/edifier-cli.exe
 
       - name: Publish release
@@ -59,4 +60,5 @@ jobs:
         with:
           files: |
             dist/EdifierR990BT.exe
+            dist/EdifierR990BT-Setup.exe
             dist/edifier-cli.exe
