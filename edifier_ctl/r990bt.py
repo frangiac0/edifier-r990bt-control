@@ -10,10 +10,10 @@ SOURCES = {
 
 VOLUME_MAX = 16
 
-# The R990BT has three preset EQs. Which code is which ConneX preset
-# (music, movie, game) has not been confirmed yet.
+# EQ presets, from the ConneX app (EQ profile 15), in the order ConneX lists them.
+# Values are i18n keys.
 EQ_PRESETS = {
-    0x00: "Preset 1",
-    0x01: "Preset 2",
-    0x02: "Preset 3",
+    0x00: "eq_music",
+    0x02: "eq_movie",
+    0x01: "eq_game",
 }

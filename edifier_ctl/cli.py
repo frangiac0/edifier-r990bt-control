@@ -173,6 +173,17 @@ async def cmd_volume(args) -> None:
         out(f"Volume set to {value}" + ("" if ack else " (no ACK)"))
 
 
+EQ_ALIASES = {"music": 0x00, "game": 0x01, "movie": 0x02}
+
+
+def parse_preset(value: str) -> int:
+    if value.lower() in EQ_ALIASES:
+        return EQ_ALIASES[value.lower()]
+    if value.isdigit() and int(value) in r990bt.EQ_PRESETS:
+        return int(value)
+    raise argparse.ArgumentTypeError("use music, movie or game")
+
+
 async def cmd_eq(args) -> None:
     address = await resolve_address(args.address)
     async with EdifierClient(address) as client:
@@ -224,8 +235,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = command("volume", "show the volume, or set it: 8, +1, -2", cmd_volume)
     s.add_argument("value", nargs="?")
 
-    s = command("eq", "select EQ preset 0, 1 or 2", cmd_eq)
-    s.add_argument("preset", type=int, choices=sorted(r990bt.EQ_PRESETS))
+    s = command("eq", "select EQ preset: music, movie, game (or 0, 2, 1)", cmd_eq)
+    s.add_argument("preset", type=parse_preset)
 
     command("off", "turn the speaker off (it can only be turned on with the knob)", cmd_off)
     command("forget", "forget the saved speaker and search again next time", cmd_forget, address=False)

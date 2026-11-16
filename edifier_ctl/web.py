@@ -176,7 +176,7 @@ def render_page() -> str:
     }
     data = {
         "sources": [[k, v] for k, v in r990bt.SOURCES.items()],
-        "presets": [[k, v] for k, v in r990bt.EQ_PRESETS.items()],
+        "presets": [[k, t(v)] for k, v in r990bt.EQ_PRESETS.items()],
         "levels": [-60, -50, -40],
         "t": labels,
     }

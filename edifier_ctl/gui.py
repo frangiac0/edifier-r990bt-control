@@ -124,8 +124,8 @@ class App:
         erow.pack(fill="x", pady=(6, 0))
         self.eq_var = tk.IntVar(value=-1)
         self.eq_buttons = []
-        for code, label in r990bt.EQ_PRESETS.items():
-            b = ttk.Radiobutton(erow, text=label, value=code, variable=self.eq_var,
+        for code, key in r990bt.EQ_PRESETS.items():
+            b = ttk.Radiobutton(erow, text=t(key), value=code, variable=self.eq_var,
                                 command=lambda c=code: self.controller.set_eq(c))
             b.pack(side="left", padx=(0, 12))
             self.eq_buttons.append(b)
