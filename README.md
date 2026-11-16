@@ -5,7 +5,7 @@ Control an **Edifier R990BT** speaker from a Windows PC over Bluetooth LE: input
 > Unofficial project, not affiliated with Edifier. It uses an undocumented protocol, reverse-engineered from the EDIFIER ConneX app. Use at your own risk.
 
 <p>
-  <img src="assets/screenshot.png" alt="Main window">
+  <img src="assets/main-window.png" alt="Main window">
   <img src="assets/settings.png" alt="Settings">
 </p>
 

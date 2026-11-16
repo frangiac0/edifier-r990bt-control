@@ -74,7 +74,7 @@ root.attributes("-topmost", True)
 
 
 def step1() -> None:
-    grab(root, "screenshot.png")
+    grab(root, "main-window.png")
     app._show_settings()
     win = app._settings_window
     win.geometry("+520+40")
