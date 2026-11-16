@@ -14,7 +14,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import __version__
@@ -31,6 +31,8 @@ class Release:
     page_url: str
     asset_url: str | None
     sha256: str | None = None
+    # (version, markdown body) of every release newer than this one, newest first.
+    notes: list[tuple[str, str]] = field(default_factory=list)
 
 
 class UpdateError(Exception):
@@ -69,7 +71,25 @@ def check() -> Release | None:
         page_url=data.get("html_url") or f"https://github.com/{RELEASES_REPO}/releases/latest",
         asset_url=asset.get("browser_download_url") if asset else None,
         sha256=_digest(asset),
+        notes=_notes_since(__version__) or [(tag.lstrip("v"), data.get("body") or "")],
     )
+
+
+def _notes_since(current: str) -> list[tuple[str, str]]:
+    """Release notes of every published release newer than `current`."""
+    url = f"https://api.github.com/repos/{RELEASES_REPO}/releases?per_page=30"
+    try:
+        with _request(url) as resp:
+            releases = json.load(resp)
+    except (OSError, ValueError):
+        return []
+    notes = [
+        (r["tag_name"].lstrip("v"), r.get("body") or "")
+        for r in releases
+        if r.get("tag_name") and not r.get("draft") and not r.get("prerelease")
+        and _parse(r["tag_name"]) > _parse(current)
+    ]
+    return sorted(notes, key=lambda n: _parse(n[0]), reverse=True)
 
 
 def _digest(asset: dict | None) -> str | None:

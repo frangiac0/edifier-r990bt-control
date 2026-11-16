@@ -79,6 +79,47 @@ def open_connect_flyout() -> None:
     user32.keybd_event(VK_LWIN, 0, KEYUP, 0)
 
 
+def render_notes(text: tk.Text, notes: list[tuple[str, str]]) -> None:
+    """Show GitHub release notes (Markdown) in a read-only Text widget."""
+    import re
+
+    text.tag_configure("version", font=("Segoe UI Semibold", 12), spacing1=6, spacing3=4)
+    text.tag_configure("heading", font=("Segoe UI Semibold", 10), spacing1=8, spacing3=2)
+    text.tag_configure("bullet", lmargin1=6, lmargin2=20, spacing1=2)
+    text.tag_configure("bold", font=("Segoe UI Semibold", 10))
+    text.tag_configure("code", font=("Consolas", 9), background="#eef0f3")
+
+    def inline(line: str, base: tuple) -> None:
+        line = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)  # links: keep the text
+        for part in re.split(r"(\*\*[^*]+\*\*|`[^`]+`)", line):
+            if part.startswith("**") and part.endswith("**"):
+                text.insert("end", part[2:-2], base + ("bold",))
+            elif part.startswith("`") and part.endswith("`"):
+                text.insert("end", part[1:-1], base + ("code",))
+            else:
+                text.insert("end", re.sub(r"(?<!\w)[*_]([^*_]+)[*_](?!\w)", r"\1", part), base)
+
+    if not notes:
+        text.insert("end", t("update_no_notes"))
+    for version, body in notes:
+        text.insert("end", t("version", version=version) + "\n", ("version",))
+        for raw in (body or "").replace("\r", "").split("\n"):
+            line = raw.strip()
+            if not line:
+                continue
+            if line.startswith("#"):
+                text.insert("end", line.lstrip("#").strip() + "\n", ("heading",))
+            elif line[:2] in ("- ", "* "):
+                text.insert("end", "•  ", ("bullet",))
+                inline(line[2:], ("bullet",))
+                text.insert("end", "\n", ("bullet",))
+            else:
+                inline(line, ())
+                text.insert("end", "\n")
+        text.insert("end", "\n")
+    text.configure(state="disabled")
+
+
 class App:
     def __init__(self, start_minimized: bool = False, events: queue.Queue | None = None) -> None:
         self.root = tk.Tk()
@@ -622,11 +663,50 @@ class App:
         release = self._release
         if release is None:
             return
-        if not (updater.can_self_update() and release.asset_url and release.sha256):
-            updater.open_page(release.page_url)
+        self._show_update_dialog(release)
+
+    def _show_update_dialog(self, release) -> None:
+        win = getattr(self, "_update_window", None)
+        if win is not None and win.winfo_exists():
+            win.lift()
             return
-        if not messagebox.askyesno("Edifier R990BT", t("update_confirm", version=release.version), parent=self.root):
-            return
+        win = tk.Toplevel(self.root)
+        self._update_window = win
+        win.title(t("update_title"))
+        win.configure(bg=BG)
+        win.transient(self.root)
+        body = ttk.Frame(win, padding=(20, 16, 20, 18))
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text=t("update_heading", version=release.version), style="Title.TLabel").pack(anchor="w")
+        ttk.Label(body, text=t("update_current", version=__version__), style="Muted.TLabel").pack(anchor="w", pady=(2, 10))
+
+        box = ttk.Frame(body)
+        box.pack(fill="both", expand=True)
+        text = tk.Text(box, width=56, height=16, wrap="word", relief="solid", bd=1, highlightthickness=0,
+                       font=("Segoe UI", 10), bg="white", fg=FG, padx=10, pady=8, cursor="arrow")
+        scroll = ttk.Scrollbar(box, orient="vertical", command=text.yview)
+        text.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+        text.pack(side="left", fill="both", expand=True)
+        render_notes(text, release.notes)
+
+        brow = ttk.Frame(body)
+        brow.pack(fill="x", pady=(12, 0))
+        ttk.Button(brow, text=t("update_later"), command=win.destroy).pack(side="right")
+        can_install = updater.can_self_update() and release.asset_url and release.sha256
+
+        def install() -> None:
+            win.destroy()
+            if can_install:
+                self._install_update(release)
+            else:
+                updater.open_page(release.page_url)
+
+        ttk.Button(brow, text=t("update_now") if can_install else t("update_download"),
+                   command=install).pack(side="right", padx=(0, 8))
+        ttk.Button(brow, text=t("update_github"), command=lambda: updater.open_page(release.page_url)).pack(side="left")
+
+    def _install_update(self, release) -> None:
         self.btn_update.state(["disabled"])
         self.update_msg.set(t("update_downloading"))
 
