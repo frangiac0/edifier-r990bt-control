@@ -270,7 +270,13 @@ LIKELY_QUERY_OPCODES = [
 
 async def cmd_probe(args) -> None:
     address = await resolve_address(args.address)
-    if args.range:
+    if getattr(args, "only", None):
+        try:
+            targets = [int(x, 16) for x in args.only.replace(",", " ").split()]
+        except ValueError:
+            out("--only takes hex opcodes, e.g. --only DA,DB,F0,F1")
+            raise SystemExit(2)
+    elif args.range:
         lo, hi = (int(x, 16) for x in args.range)
         if not (0 <= lo <= hi <= 0xFF):
             out("Range must be two hex bytes, low high (e.g. --range 60 70).")
@@ -363,6 +369,7 @@ def build_parser() -> argparse.ArgumentParser:
     command("forget", "forget the saved speaker and search again next time", cmd_forget, address=False)
 
     s = command("probe", "safely query read-only opcodes to look for undocumented ones", cmd_probe)
+    s.add_argument("--only", help="probe exactly these hex opcodes, comma or space separated (e.g. DA,DB,F0,F1)")
     s.add_argument("--range", nargs=2, metavar=("LOW", "HIGH"),
                    help="sweep a hex opcode range instead of the curated list (e.g. 60 70)")
     s.add_argument("--i-understand-the-risk", action="store_true",
