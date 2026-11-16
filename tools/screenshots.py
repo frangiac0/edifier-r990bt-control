@@ -75,7 +75,7 @@ root.attributes("-topmost", True)
 
 
 def step1() -> None:
-    grab(root, "main-window.png")
+    grab(root, "window-main.png")
     app._show_settings()
     win = app._settings_window
     # Same height as the main window, so both images line up in the README.
@@ -86,7 +86,7 @@ def step1() -> None:
 
 
 def step2(win) -> None:
-    grab(win, "settings.png")
+    grab(win, "window-settings.png")
     app._quit()
 
 
