@@ -28,6 +28,20 @@ jobs:
           PYTHON: python
         run: ./packaging/build.ps1
 
+      # Manual runs also capture the README screenshots with a simulated speaker.
+      - name: Screenshots
+        if: github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        shell: pwsh
+        run: python tools/screenshots.py screenshots
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        with:
+          name: screenshots
+          path: screenshots/
+
       - uses: actions/upload-artifact@v4
         with:
           name: edifier-r990bt-control-windows
