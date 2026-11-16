@@ -63,8 +63,12 @@ class App:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(100, self._pump)
         self._setup_tray()
-        if start_minimized and self.tray is not None:
-            self.root.withdraw()
+        self.root.bind("<Unmap>", self._on_unmap)
+        if start_minimized:
+            if self._to_tray("minimize_to_tray"):
+                self.root.withdraw()
+            else:
+                self.root.iconify()
         self._restore_settings()
         self.controller.start()
 
@@ -163,14 +167,6 @@ class App:
         self.btn_qr.pack(side="left", padx=(8, 0))
         self.btn_qr.state(["disabled"])
 
-        self.autostart_var = tk.BooleanVar(value=autostart.is_enabled())
-        self.autostart_check = ttk.Checkbutton(
-            frame, text=t("autostart"), variable=self.autostart_var, command=self._on_autostart_ui,
-        )
-        self.autostart_check.pack(anchor="w", pady=(16, 0))
-        if not autostart.available():
-            self.autostart_check.state(["disabled"])
-
         brow = ttk.Frame(frame)
         brow.pack(fill="x", pady=(18, 0))
         self.btn_settings = ttk.Button(brow, text=t("settings"), command=self._show_settings)
@@ -214,7 +210,19 @@ class App:
             pystray.MenuItem(t("quit"), lambda: self._events.put(("quit", None))),
         )
         self.tray = pystray.Icon("edifier-r990bt", make_icon_image(), "Edifier R990BT", menu)
-        self.tray.run_detached()
+        shown = bool(config.get("tray_icon", True))
+        self.tray.run_detached(setup=lambda icon: setattr(icon, "visible", shown))
+
+    def _tray_visible(self) -> bool:
+        return self.tray is not None and bool(config.get("tray_icon", True))
+
+    def _to_tray(self, key: str) -> bool:
+        """Whether minimizing/closing (by config key) should hide the window in the tray."""
+        return self._tray_visible() and bool(config.get(key, False))
+
+    def _on_unmap(self, event) -> None:
+        if event.widget is self.root and self.root.state() == "iconic" and self._to_tray("minimize_to_tray"):
+            self.root.after_idle(self.root.withdraw)
 
     # --- Events ---
 
@@ -225,8 +233,8 @@ class App:
                 if kind == "state":
                     self._apply_state(data)
                 elif kind == "show":
-                    self.autostart_var.set(autostart.is_enabled())
                     self.root.deiconify()
+                    self.root.state("normal")
                     self.root.lift()
                     self.root.focus_force()
                 elif kind == "pair":
@@ -268,7 +276,7 @@ class App:
         state = "normal" if enabled else "disabled"
         for b in self.source_buttons:
             b.configure(state=state)
-        for w in (self.btn_down, self.btn_up, self.volume_scale, self.btn_power, self.btn_settings, self.btn_pair, *self.eq_buttons):
+        for w in (self.btn_down, self.btn_up, self.volume_scale, self.btn_power, self.btn_pair, *self.eq_buttons):
             w.state(["!disabled"] if enabled else ["disabled"])
 
     # --- Settings, keep-alive and phone remote ---
@@ -280,9 +288,6 @@ class App:
         if config.get("web_enabled", False):
             self.web_var.set(True)
             self._on_web_ui()
-
-    def _on_autostart_ui(self) -> None:
-        self.autostart_var.set(autostart.set_enabled(self.autostart_var.get()))
 
     def _on_keepalive_ui(self) -> None:
         level = int(self.ka_level_var.get().split()[0])
@@ -373,7 +378,8 @@ class App:
         body = ttk.Frame(win, padding=(20, 16, 20, 18))
         body.pack(fill="both", expand=True)
 
-        ttk.Label(body, text=t("speaker_name"), style="Section.TLabel").pack(anchor="w")
+        ttk.Label(body, text=t("speaker_section"), style="Section.TLabel").pack(anchor="w")
+        ttk.Label(body, text=t("speaker_name")).pack(anchor="w", pady=(8, 0))
         row = ttk.Frame(body)
         row.pack(fill="x", pady=(6, 0))
         name_var = tk.StringVar(value=self._state.name or "")
@@ -402,23 +408,66 @@ class App:
             body, text=t("prompt_tone"), variable=tone_var,
             command=lambda: self.controller.set_prompt_tone(tone_var.get()),
         )
-        tone.pack(anchor="w", pady=(16, 0))
-        if self._state.prompt_tone is None:
-            tone.state(["disabled"])
+        tone.pack(anchor="w", pady=(12, 0))
+
+        ttk.Separator(body).pack(fill="x", pady=(18, 12))
+        ttk.Label(body, text=t("app_section"), style="Section.TLabel").pack(anchor="w")
+
+        autostart_var = tk.BooleanVar(value=autostart.is_enabled())
+        autostart_check = ttk.Checkbutton(
+            body, text=t("autostart"), variable=autostart_var,
+            command=lambda: autostart_var.set(autostart.set_enabled(autostart_var.get())),
+        )
+        autostart_check.pack(anchor="w", pady=(8, 0))
+        if not autostart.available():
+            autostart_check.state(["disabled"])
+
+        tray_var = tk.BooleanVar(value=self._tray_visible())
+        min_var = tk.BooleanVar(value=bool(config.get("minimize_to_tray", False)))
+        close_var = tk.BooleanVar(value=bool(config.get("close_to_tray", False)))
+
+        def apply_tray() -> None:
+            config.set_values(
+                tray_icon=tray_var.get(), minimize_to_tray=min_var.get(), close_to_tray=close_var.get(),
+            )
+            if self.tray is not None:
+                self.tray.visible = tray_var.get()
+            sub = ["!disabled"] if tray_var.get() else ["disabled"]
+            min_check.state(sub)
+            close_check.state(sub)
+
+        tray_check = ttk.Checkbutton(body, text=t("tray_icon"), variable=tray_var, command=apply_tray)
+        tray_check.pack(anchor="w", pady=(6, 0))
+        min_check = ttk.Checkbutton(body, text=t("minimize_to_tray"), variable=min_var, command=apply_tray)
+        min_check.pack(anchor="w", padx=(22, 0), pady=(4, 0))
+        close_check = ttk.Checkbutton(body, text=t("close_to_tray"), variable=close_var, command=apply_tray)
+        close_check.pack(anchor="w", padx=(22, 0), pady=(4, 0))
+        ttk.Label(body, text=t("app_hint"), style="Muted.TLabel", wraplength=320).pack(anchor="w", pady=(6, 0))
+        if self.tray is None:
+            for w in (tray_check, min_check, close_check):
+                w.state(["disabled"])
+        elif not tray_var.get():
+            min_check.state(["disabled"])
+            close_check.state(["disabled"])
 
         win._name_msg = msg_var
+        win._name_entry = entry
         win._save_btn = save_btn
         win._tone_var = tone_var
         win._tone = tone
         self._settings_window = win
+        self._refresh_settings_window(self._state)
 
     def _refresh_settings_window(self, st: State) -> None:
         win = self._settings_window
         if win is None or not win.winfo_exists():
             return
+        speaker = ["!disabled"] if st.connected else ["disabled"]
+        win._name_entry.state(speaker)
+        win._save_btn.state(speaker)
         if st.prompt_tone is not None:
             win._tone_var.set(st.prompt_tone)
-            win._tone.state(["!disabled"] if st.connected else ["disabled"])
+        win._tone.state(speaker if st.prompt_tone is not None else ["disabled"])
 
     def _confirm_pair(self) -> None:
         if messagebox.askyesno("Edifier R990BT", t("pair_confirm"), parent=self.root):
@@ -442,7 +491,7 @@ class App:
         self.controller.set_volume(current + delta)
 
     def _on_close(self) -> None:
-        if self.tray is not None:
+        if self._to_tray("close_to_tray"):
             self.root.withdraw()  # keep running in the tray
         else:
             self._quit()

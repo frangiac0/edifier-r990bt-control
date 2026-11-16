@@ -19,7 +19,7 @@ Requirements: Windows 10 or 11 with Bluetooth 4.0 or later. Most laptops have it
 - **Input:** Bluetooth, Line 1, Line 2.
 - **Volume:** slider and `-` / `+` buttons (0 to 16, the speaker's own scale).
 - **EQ:** the speaker's three presets: Music, Movie and Game.
-- **Settings...:** rename the speaker (up to 30 characters) and turn the Bluetooth connection prompt tone on or off.
+- **Settings...:** rename the speaker (up to 30 characters), turn the Bluetooth connection prompt tone on or off, and set how the app starts, minimizes and closes (see below).
 - **Pair new device:** disconnects the current Bluetooth audio device and leaves the speaker in pairing mode (blue LED blinking), like holding its Bluetooth button. The app loses the speaker for a minute or two and then reconnects by itself. To reconnect a Windows PC afterwards, press `Win + K` and pick the speaker.
 - **Turn off:** powers the speaker down. It can only be turned back on with its knob; the app reconnects by itself when it is.
 
@@ -37,13 +37,15 @@ Tick **Allow control from a phone on this Wi-Fi** and press **Show QR**. Scannin
 
 The link includes a random access key, so other devices on the network cannot use it without the QR. The server listens on port 8765. The first time, Windows asks whether to allow the app on the network: allow it on **private** networks.
 
-### Start with Windows
+### Start with Windows, tray and closing
 
-Tick **Start with Windows (in the tray)** to have the app start hidden in the tray when you sign in. It is a per-user entry under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, so it needs no admin rights, and it also shows up in **Task Manager > Startup apps**, where it can be turned off too. If you move the exe, open it once from the new folder and the entry follows it.
+In **Settings... > App**:
 
-Only one copy of the app runs at a time: opening it again while it is in the tray just brings up its window.
+- **Start with Windows (minimized):** the app starts when you sign in, minimized to the taskbar, or hidden in the tray if *Minimize to the tray* is on. It is a per-user entry under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, so it needs no admin rights, and it also shows up in **Task Manager > Startup apps**, where it can be turned off too. If you move the exe, open it once from the new folder and the entry follows it.
+- **Show icon in the system tray:** an icon next to the clock whose menu switches inputs without opening the window.
+- **Minimize to the tray instead of the taskbar** and **Keep running in the tray when the window is closed:** off by default, so minimizing goes to the taskbar and closing the window quits the app. With the second one on, use **Quit** in the tray menu to exit.
 
-Closing the window keeps the app running in the system tray, next to the clock. The tray menu switches inputs without opening the window. Choose **Quit** there to exit.
+The phone remote and auto-mute prevention only work while the app is running. Only one copy runs at a time: opening it again while it is running brings up its window.
 
 The first time, the app searches for the speaker and saves its address in `%APPDATA%\edifier-r990bt-control\config.json`. Delete that file to pair the app with a different speaker.
 

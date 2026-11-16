@@ -1,4 +1,4 @@
 bleak>=0.22
-pystray>=0.19
+pystray>=0.19.5
 pillow>=10
 qrcode>=7.4
