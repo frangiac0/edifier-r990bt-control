@@ -252,6 +252,7 @@ DANGEROUS_OPCODES = {
     0x10, 0x11, 0x12,  # firmware update
     0x86, 0x87,        # multi prompt tone set
     0xC2, 0xB8,        # playback / LAN-switch set
+    0xF1,              # control-setting write (tap_set); 0xF0 is the matching query
 }
 
 # Opcodes that look like queries: the known read opcodes, plus the even/low
@@ -262,7 +263,7 @@ LIKELY_QUERY_OPCODES = [
     0x60, 0x63, 0x64, 0x65, 0x68, 0x69,   # neighbours of input/volume gets
     0xC5, 0xC7, 0xC8,                     # neighbours of name/firmware (C7, C8 found)
     0xD0, 0xD2, 0xD3, 0xD4, 0xD6, 0xD7, 0xD9,        # around eq/capabilities
-    0xDA, 0xDB, 0xDC, 0xF0, 0xF1, 0xF8, 0xFB, 0xFC,  # status-like ranges
+    0xDA, 0xDB, 0xDC, 0xF0, 0xF8, 0xFB, 0xFC,        # status-like ranges (F0 = control-setting query)
     # Left out because they drop the BLE link when probed (recoverable):
     # 0xCB-0xCF (next to name-set 0xCA) and 0xD1.
 ]

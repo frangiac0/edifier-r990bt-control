@@ -33,6 +33,8 @@ OP_A2DP_STATE = 0xC3
 OP_POWER_OFF = 0xCE
 OP_DISCONNECT_AUDIO = 0xCD
 OP_NAME_SET = 0xCA
+OP_CONTROL_GET = 0xF0       # generic control-setting query (ConneX tap_query)
+OP_CONTROL_SET = 0xF1       # generic control-setting write (ConneX tap_set)
 OP_BT_ADDRESS = 0xC8        # returns the Classic Bluetooth (BR/EDR) address (discovered)
 OP_C7_STATUS = 0xC7         # one-byte status, meaning unknown (discovered)
 OP_PROMPT_TONE_GET = 0xF9
@@ -54,6 +56,8 @@ OPCODE_NAMES = {
     OP_DISCONNECT_AUDIO: "disconnect Bluetooth audio",
     OP_NAME_SET: "name (set)",
     OP_BT_ADDRESS: "Bluetooth address",
+    OP_CONTROL_GET: "control setting (query)",
+    OP_CONTROL_SET: "control setting (set)",
     OP_C7_STATUS: "status C7 (unknown)",
     OP_PROMPT_TONE_GET: "prompt tone (query)",
     OP_PROMPT_TONE_SET: "prompt tone (set)",

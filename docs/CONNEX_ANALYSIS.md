@@ -58,6 +58,7 @@ EQ profile 15 has three presets. ConneX lists them in this order:
 | `0xC8` | Classic Bluetooth (BR/EDR) address query | Discovered by probing; returns 6 bytes, the A2DP MAC (differs from the BLE address) |
 | `0xC7` | One-byte status, value `01` | Discovered by probing; meaning unknown |
 | `0xCB`, `0xD1` | Drop the BLE control link when sent with no payload | Discovered by probing; the speaker reconnects on its own. Not probed by default |
+| `0xF0` / `0xF1` | Generic control-setting query / set (ConneX `tap_query` / `tap_set`) | Discovered by probing; payload byte 0 selects the sub-setting. On the R990BT a query returned sub-setting `0x87` (`tip_beep`) = `0`. Most sub-settings are headphone features; `0xF1` writes, so treat it as a set command |
 | `0x07` | Factory reset | Not used, on purpose |
 | `0x10` / `0x11` | Firmware update (see below) | Not used, on purpose |
 | `0x12` | Not sent or handled anywhere in ConneX | Unknown |
