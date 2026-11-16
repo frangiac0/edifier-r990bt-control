@@ -3,6 +3,8 @@
 #   EdifierR990BT-Setup.exe  per-user installer (Inno Setup, app as a folder)
 #   edifier-cli.exe          command-line tool
 # Run from the repository root:  powershell -ExecutionPolicy Bypass -File packaging\build.ps1
+# Set $env:BUILD_CLI_ONLY=true to build (and test) only edifier-cli.exe, which
+# is much faster for iterating on the command-line tool.
 $ErrorActionPreference = "Stop"
 # Set $env:PYTHON to use a specific interpreter (CI uses "python").
 $py = if ($env:PYTHON) { $env:PYTHON } else { "py" }
@@ -10,14 +12,26 @@ function Invoke-Checked { & $args[0] @($args | Select-Object -Skip 1); if ($LAST
 
 Invoke-Checked $py -m pip install -r requirements.txt pyinstaller==6.11.1
 
+$cliOnly = $env:BUILD_CLI_ONLY -eq 'true'
+if ($cliOnly) { Write-Host "CLI-only build (fast)" }
+
 $common = @("--noconfirm", "--icon", "assets\icon.ico",
             "--collect-all", "bleak", "--collect-all", "winrt",
             "--paths", ".")
-$app = @("--windowed", "--name", "EdifierR990BT", "--hidden-import", "pystray._win32", "--collect-submodules", "qrcode")
 
+# The command-line tool is always built first (it is what most iterations need).
+Invoke-Checked $py -m PyInstaller @common --onefile --console --name edifier-cli packaging\cli.py
+& dist\edifier-cli.exe --help | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "edifier-cli.exe --help failed" }
+
+if ($cliOnly) {
+  Write-Host "Build OK (edifier-cli only)"
+  return
+}
+
+$app = @("--windowed", "--name", "EdifierR990BT", "--hidden-import", "pystray._win32", "--collect-submodules", "qrcode")
 Invoke-Checked $py -m PyInstaller @common @app --onefile packaging\app.py
 Invoke-Checked $py -m PyInstaller @common @app --onedir --distpath build\onedir --workpath build\onedir-work packaging\app.py
-Invoke-Checked $py -m PyInstaller @common --onefile --console --name edifier-cli packaging\cli.py
 
 # Installer. Inno Setup is preinstalled on GitHub's Windows runners; otherwise install it.
 $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe", "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") |
@@ -70,6 +84,4 @@ for ($i = 0; $i -lt 30 -and (Test-Path "$dir\EdifierR990BT.exe"); $i++) { Start-
 if (Test-Path "$dir\EdifierR990BT.exe") { throw "Uninstaller left the app behind" }
 Write-Host "installer OK"
 
-& dist\edifier-cli.exe --help | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "edifier-cli.exe --help failed" }
 Write-Host "Build OK"

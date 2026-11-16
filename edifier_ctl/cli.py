@@ -230,6 +230,68 @@ async def cmd_pair(args) -> None:
         out("Connect the new device to EDIFIER R990BT. Control commands work again in a minute or two.")
 
 
+async def cmd_eq_test(args) -> None:
+    """Experimental: check whether the firmware applies a custom EQ.
+
+    The ConneX app shows only three fixed presets for the R990BT, but the
+    firmware answers custom_eq_query (0x43) with a 6-band structure. This
+    writes a strong custom-EQ curve with custom_eq_set (0x44) so you can hear
+    whether it has any effect, then restores a normal preset. Fully reversible.
+    """
+    address = await resolve_address(args.address)
+    gain = args.gain
+    # 6 bands, 4 bytes each: band index, freq hi, freq lo, signed gain (dB).
+    # Boost the low bands and cut the highs for an unmistakable change.
+    freqs = [60, 150, 400, 1000, 4000, 12000]
+    curve = [gain, gain, gain // 2, 0, -gain, -gain]
+
+    out("Experimental custom-EQ test. This WRITES a custom EQ to the speaker,")
+    out("then restores a preset. Play music now so you can hear any change.")
+    if not args.yes:
+        try:
+            if input("Proceed? [y/N] ").strip().lower() not in ("y", "yes", "s", "si"):
+                out("Cancelled.")
+                return
+        except EOFError:
+            out("Run with --yes to proceed without a prompt.")
+            return
+
+    async with EdifierClient(address, on_frame=show_frame) as client:
+        before = await client.request(p.OP_EQ_GET)
+        preset = before.payload[0] if before and before.payload else 0x00
+        out(f"Current preset: {r990bt.EQ_PRESETS.get(preset, '?')} ({preset:02X})")
+        current = await client.request(p.OP_CUSTOM_EQ_GET)
+        if current:
+            out(f"Current custom EQ: {current.payload.hex(' ').upper()}")
+
+        out(f"\nApplying custom EQ (gain {gain:+d} dB on lows, {-gain:+d} on highs)...")
+        for band, (freq, g) in enumerate(zip(freqs, curve)):
+            payload = bytes([band, (freq >> 8) & 0xFF, freq & 0xFF, g & 0xFF])
+            out(f"  -> band {band} @ {freq} Hz gain {g:+d}")
+            await client.request(p.OP_CUSTOM_EQ_SET, payload, timeout=1.0)
+            await asyncio.sleep(0.1)
+
+        out("\nListen now. Does the sound change (much more bass, dull treble)?")
+        if not args.hold:
+            try:
+                input("Press Enter to restore the preset... ")
+            except EOFError:
+                await asyncio.sleep(10)
+        else:
+            await asyncio.sleep(args.hold)
+
+        out("Restoring...")
+        # Flatten every band, then reselect the original preset.
+        for band, freq in enumerate(freqs):
+            await client.request(p.OP_CUSTOM_EQ_SET, bytes([band, (freq >> 8) & 0xFF, freq & 0xFF, 0]), timeout=1.0)
+            await asyncio.sleep(0.05)
+        await client.request(p.OP_EQ_SET, bytes([preset]))
+        out(f"Preset {r990bt.EQ_PRESETS.get(preset, '?')} restored.")
+        out("\nIf the sound changed during the test, the firmware DOES apply a")
+        out("custom EQ and we can add it to the app. If nothing changed, the")
+        out("command surface exists but the DSP ignores it on this model.")
+
+
 async def cmd_send(args) -> None:
     address = await resolve_address(args.address)
     payload = p.parse_hex(" ".join(args.payload)) if args.payload else b""
@@ -372,6 +434,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--i-understand-the-risk", action="store_true",
                    help="required for --range: unknown opcodes could change the speaker")
     s.add_argument("--wait", type=float, default=1.0, help="seconds to wait for each reply")
+
+    s = command("eq-test", "experimental: test whether the firmware applies a custom EQ (writes, then restores)", cmd_eq_test)
+    s.add_argument("--gain", type=int, default=12, help="boost in dB for the low bands (default 12)")
+    s.add_argument("--hold", type=float, help="seconds to hold the test EQ before restoring (default: wait for Enter)")
+    s.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
 
     s = command("send", "send an arbitrary command (advanced)", cmd_send)
     s.add_argument("opcode", help="opcode in hex, e.g. 61")
