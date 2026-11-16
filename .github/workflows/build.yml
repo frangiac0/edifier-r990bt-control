@@ -33,7 +33,10 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         continue-on-error: true
         shell: pwsh
-        run: python tools/screenshots.py screenshots
+        run: |
+          python tools/screenshots.py screenshots
+          # Also print them (palette PNG, base64) so they can be recovered from the log.
+          python -c "import base64,io,pathlib;from PIL import Image;[print('==',p.name,'==',flush=True) or [print(l) for l in base64.encodebytes((lambda b:(Image.open(p).convert('RGB').quantize(256).save(b,'PNG',optimize=True),b.getvalue())[1])(io.BytesIO())).decode().split()] for p in sorted(pathlib.Path('screenshots').glob('*.png'))];print('== end ==')"
 
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'workflow_dispatch'
