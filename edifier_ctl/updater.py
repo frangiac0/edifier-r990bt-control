@@ -6,6 +6,7 @@ the one named in RELEASES_REPO) has to be public.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -28,6 +29,7 @@ class Release:
     version: str
     page_url: str
     asset_url: str | None
+    sha256: str | None = None
 
 
 class UpdateError(Exception):
@@ -65,7 +67,15 @@ def check() -> Release | None:
         version=tag.lstrip("v"),
         page_url=data.get("html_url") or f"https://github.com/{RELEASES_REPO}/releases/latest",
         asset_url=asset.get("browser_download_url") if asset else None,
+        sha256=_digest(asset),
     )
+
+
+def _digest(asset: dict | None) -> str | None:
+    # GitHub computes this when the asset is uploaded ("sha256:<hex>").
+    digest = (asset or {}).get("digest") or ""
+    algo, _, value = digest.partition(":")
+    return value.lower() if algo == "sha256" and len(value) == 64 else None
 
 
 def can_self_update() -> bool:
@@ -80,16 +90,19 @@ def install(release: Release) -> None:
     """Download the new exe next to the running one and swap them. Windows
     allows renaming a running exe, so no helper script is needed. The caller
     must then call restart() and quit."""
-    if not (can_self_update() and release.asset_url):
+    if not (can_self_update() and release.asset_url and release.sha256):
         raise UpdateError("manual")
     exe = Path(sys.executable)
     new = exe.with_name(exe.stem + ".new.exe")
     try:
+        sha = hashlib.sha256()
         with _request(release.asset_url) as resp, open(new, "wb") as f:
             while chunk := resp.read(1 << 16):
                 f.write(chunk)
-        if new.stat().st_size < 1_000_000:  # sanity check: the real exe is tens of MB
-            raise UpdateError("download too small")
+                sha.update(chunk)
+        if sha.hexdigest() != release.sha256:
+            new.unlink(missing_ok=True)
+            raise UpdateError("checksum mismatch")
         old = _old_path(exe)
         old.unlink(missing_ok=True)
         exe.rename(old)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import queue
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -26,6 +27,28 @@ try:  # The tray icon is optional: without pystray the app still works.
         pystray = None
 except Exception:  # library missing or no tray support
     pystray = None
+
+TIMER_MINUTES = (15, 30, 45, 60, 90, 120, 180)
+
+
+def timer_label(minutes: int) -> str:
+    if minutes < 60:
+        return f"{minutes} min"
+    h, m = divmod(minutes, 60)
+    return f"{h} h" + (f" {m} min" if m else "")
+
+
+def load_scenes() -> list[dict]:
+    scenes = []
+    for s in config.get("scenes", []) or []:
+        try:
+            source, eq = int(s["source"]), int(s["eq"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if source in r990bt.SOURCES and eq in r990bt.EQ_PRESETS:
+            scenes.append({"name": str(s.get("name") or "?")[:24], "source": source, "eq": eq})
+    return scenes
+
 
 ACCENT = "#1f6feb"
 BG = "#f6f7f9"
@@ -162,6 +185,15 @@ class App:
             b.pack(side="left", padx=(0, 12))
             self.eq_buttons.append(b)
 
+        shead = ttk.Frame(frame)
+        shead.pack(fill="x", pady=(16, 0))
+        ttk.Label(shead, text=t("scenes"), style="Section.TLabel").pack(side="left")
+        ttk.Button(shead, text=t("scenes_edit"), command=self._edit_scenes).pack(side="right")
+        self.scenes_row = ttk.Frame(frame)
+        self.scenes_row.pack(fill="x", pady=(6, 0))
+        self.scene_buttons = []
+        self._render_scenes()
+
         ttk.Separator(frame).pack(fill="x", pady=(18, 12))
 
         ka_row = ttk.Frame(frame)
@@ -193,8 +225,23 @@ class App:
         self.btn_qr.pack(side="left", padx=(8, 0))
         self.btn_qr.state(["disabled"])
 
+        trow = ttk.Frame(frame)
+        trow.pack(fill="x", pady=(16, 0))
+        ttk.Label(trow, text=t("timer")).pack(side="left")
+        self.timer_var = tk.StringVar(value=t("timer_off"))
+        self.timer_box = ttk.Combobox(
+            trow, textvariable=self.timer_var, state="readonly", width=12,
+            values=[t("timer_off")] + [timer_label(m) for m in TIMER_MINUTES],
+        )
+        self.timer_box.pack(side="left", padx=(8, 0))
+        self.timer_box.bind("<<ComboboxSelected>>", lambda e: self._on_timer_ui())
+        self.timer_info = tk.StringVar(value="")
+        ttk.Label(trow, textvariable=self.timer_info, style="Muted.TLabel").pack(side="left", padx=(8, 0))
+        self._timer_job = None
+        self._timer_deadline = None
+
         brow = ttk.Frame(frame)
-        brow.pack(fill="x", pady=(18, 0))
+        brow.pack(fill="x", pady=(14, 0))
         self.btn_settings = ttk.Button(brow, text=t("settings"), command=self._show_settings)
         self.btn_settings.pack(side="left")
         self.btn_pair = ttk.Button(brow, text=t("pair"), command=self._confirm_pair)
@@ -228,8 +275,28 @@ class App:
             )
             for code, label in r990bt.SOURCES.items()
         ]
+        def scene_items():
+            return [
+                pystray.MenuItem(s["name"], (lambda sc: lambda: self._apply_scene(sc))(s))
+                for s in self._scenes
+            ] or [pystray.MenuItem(t("scenes_none"), None, enabled=False)]
+
+        def timer_items():
+            yield pystray.MenuItem(
+                t("timer_off"), lambda: self._events.put(("timer", 0)),
+                checked=lambda item: self._timer_deadline is None, radio=True,
+            )
+            for m in TIMER_MINUTES:
+                yield pystray.MenuItem(
+                    timer_label(m), (lambda mm: lambda: self._events.put(("timer", mm)))(m),
+                    checked=(lambda mm: lambda item: self._timer_minutes == mm)(m), radio=True,
+                )
+
         menu = pystray.Menu(
             *items,
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem(t("scenes_menu"), pystray.Menu(scene_items)),
+            pystray.MenuItem(t("timer"), pystray.Menu(timer_items)),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(t("pair"), lambda: self._events.put(("pair", None))),
             pystray.MenuItem(t("show_window"), lambda: self._events.put(("show", None)), default=True),
@@ -275,6 +342,8 @@ class App:
                 elif kind == "keepalive":
                     enabled, level = data
                     self._set_keepalive(enabled, level)
+                elif kind == "timer":
+                    self._set_timer(data)
                 elif kind == "update_checked":
                     self._on_update_checked(*data)
                 elif kind == "update_installed":
@@ -306,10 +375,203 @@ class App:
         state = "normal" if enabled else "disabled"
         for b in self.source_buttons:
             b.configure(state=state)
-        for w in (self.btn_down, self.btn_up, self.volume_scale, self.btn_power, self.btn_pair, *self.eq_buttons):
+        for w in (self.btn_down, self.btn_up, self.volume_scale, self.btn_power, self.btn_pair, *self.eq_buttons, *self.scene_buttons):
             w.state(["!disabled"] if enabled else ["disabled"])
 
     # --- Settings, keep-alive and phone remote ---
+
+    # --- Scenes ---
+
+    def _render_scenes(self) -> None:
+        self._scenes = load_scenes()
+        for w in self.scenes_row.winfo_children():
+            w.destroy()
+        self.scene_buttons = []
+        if not self._scenes:
+            ttk.Label(self.scenes_row, text=t("scenes_empty"), style="Muted.TLabel", wraplength=300).pack(anchor="w")
+            return
+        for i, scene in enumerate(self._scenes):
+            b = ttk.Button(self.scenes_row, text=scene["name"], command=lambda s=scene: self._apply_scene(s))
+            b.grid(row=i // 3, column=i % 3, sticky="ew", padx=(0 if i % 3 == 0 else 4, 0), pady=(0, 4))
+            self.scene_buttons.append(b)
+        for c in range(3):
+            self.scenes_row.columnconfigure(c, weight=1, uniform="scene")
+        if not self._state.connected:
+            for b in self.scene_buttons:
+                b.state(["disabled"])
+        if self.tray is not None:
+            self.tray.update_menu()
+
+    def _apply_scene(self, scene: dict) -> None:
+        self.controller.set_source(scene["source"])
+        self.controller.set_eq(scene["eq"])
+
+    def _edit_scenes(self) -> None:
+        win = getattr(self, "_scenes_window", None)
+        if win is not None and win.winfo_exists():
+            win.lift()
+            return
+        win = tk.Toplevel(self.root)
+        win.title(t("scenes_title"))
+        win.configure(bg=BG)
+        win.resizable(False, False)
+        self._scenes_window = win
+        body = ttk.Frame(win, padding=(20, 16, 20, 18))
+        body.pack(fill="both", expand=True)
+
+        scenes = load_scenes()
+        sources = list(r990bt.SOURCES.items())
+        presets = [(code, t(key)) for code, key in r990bt.EQ_PRESETS.items()]
+
+        left = ttk.Frame(body)
+        left.pack(side="left", fill="y")
+        listbox = tk.Listbox(left, height=8, width=18, exportselection=False, activestyle="none",
+                             font=("Segoe UI", 10), relief="solid", bd=1, highlightthickness=0)
+        listbox.pack(fill="y", expand=True)
+        lbtn = ttk.Frame(left)
+        lbtn.pack(fill="x", pady=(6, 0))
+
+        right = ttk.Frame(body)
+        right.pack(side="left", fill="both", padx=(16, 0))
+        name_var = tk.StringVar()
+        source_var = tk.StringVar()
+        eq_var = tk.StringVar()
+        ttk.Label(right, text=t("scene_name")).pack(anchor="w")
+        name_entry = ttk.Entry(right, textvariable=name_var, width=22)
+        name_entry.pack(anchor="w", pady=(4, 10))
+        ttk.Label(right, text=t("input").capitalize()).pack(anchor="w")
+        source_box = ttk.Combobox(right, textvariable=source_var, state="readonly", width=20,
+                                  values=[label for _, label in sources])
+        source_box.pack(anchor="w", pady=(4, 10))
+        ttk.Label(right, text=t("eq").capitalize()).pack(anchor="w")
+        eq_box = ttk.Combobox(right, textvariable=eq_var, state="readonly", width=20,
+                              values=[label for _, label in presets])
+        eq_box.pack(anchor="w", pady=(4, 0))
+        fields = (name_entry, source_box, eq_box)
+
+        loading = False
+
+        def save() -> None:
+            config.set_values(scenes=scenes)
+            self._render_scenes()
+
+        def refresh_list(select: int | None) -> None:
+            listbox.delete(0, "end")
+            for s in scenes:
+                listbox.insert("end", s["name"])
+            if select is not None and scenes:
+                select = min(select, len(scenes) - 1)
+                listbox.selection_set(select)
+                listbox.see(select)
+            load_selected()
+
+        def selected() -> int | None:
+            sel = listbox.curselection()
+            return sel[0] if sel else None
+
+        def load_selected(_event=None) -> None:
+            nonlocal loading
+            i = selected()
+            loading = True
+            if i is None:
+                name_var.set("")
+                source_var.set("")
+                eq_var.set("")
+                for w in fields:
+                    w.state(["disabled"])
+            else:
+                s = scenes[i]
+                for w in fields:
+                    w.state(["!disabled"])
+                source_box.state(["readonly"])
+                eq_box.state(["readonly"])
+                name_var.set(s["name"])
+                source_var.set(r990bt.SOURCES[s["source"]])
+                eq_var.set(dict(presets)[s["eq"]])
+            loading = False
+            del_btn.state(["disabled"] if i is None else ["!disabled"])
+
+        def on_change(*_args) -> None:
+            i = selected()
+            if loading or i is None:
+                return
+            s = scenes[i]
+            s["name"] = name_var.get().strip()[:24] or "?"
+            s["source"] = next((c for c, label in sources if label == source_var.get()), s["source"])
+            s["eq"] = next((c for c, label in presets if label == eq_var.get()), s["eq"])
+            listbox.delete(i)
+            listbox.insert(i, s["name"])
+            listbox.selection_set(i)
+            save()
+
+        def add() -> None:
+            st = self._state
+            scenes.append({
+                "name": t("scene_default_name", n=len(scenes) + 1),
+                "source": st.source if st.source in r990bt.SOURCES else sources[0][0],
+                "eq": st.eq if st.eq in r990bt.EQ_PRESETS else presets[0][0],
+            })
+            save()
+            refresh_list(len(scenes) - 1)
+            name_entry.focus_set()
+            name_entry.select_range(0, "end")
+
+        def delete() -> None:
+            i = selected()
+            if i is None:
+                return
+            del scenes[i]
+            save()
+            refresh_list(i)
+
+        ttk.Button(lbtn, text=t("scene_add"), command=add).pack(side="left")
+        del_btn = ttk.Button(lbtn, text=t("scene_delete"), command=delete)
+        del_btn.pack(side="right")
+        ttk.Label(right, text=t("scenes_hint"), style="Muted.TLabel", wraplength=180).pack(anchor="w", pady=(14, 0))
+
+        listbox.bind("<<ListboxSelect>>", load_selected)
+        name_var.trace_add("write", on_change)
+        source_box.bind("<<ComboboxSelected>>", on_change)
+        eq_box.bind("<<ComboboxSelected>>", on_change)
+        refresh_list(0)
+
+    # --- Sleep timer ---
+
+    @property
+    def _timer_minutes(self) -> int | None:
+        return getattr(self, "_timer_set_minutes", None) if self._timer_deadline else None
+
+    def _on_timer_ui(self) -> None:
+        label = self.timer_var.get()
+        minutes = next((m for m in TIMER_MINUTES if timer_label(m) == label), 0)
+        self._set_timer(minutes)
+
+    def _set_timer(self, minutes: int) -> None:
+        if self._timer_job is not None:
+            self.root.after_cancel(self._timer_job)
+            self._timer_job = None
+        if minutes:
+            self._timer_deadline = time.time() + minutes * 60
+            self._timer_set_minutes = minutes
+            self.timer_var.set(timer_label(minutes))
+            self._timer_tick()
+        else:
+            self._timer_deadline = None
+            self.timer_var.set(t("timer_off"))
+            self.timer_info.set("")
+        if self.tray is not None:
+            self.tray.update_menu()
+
+    def _timer_tick(self) -> None:
+        remaining = self._timer_deadline - time.time()
+        if remaining <= 0:
+            self._timer_job = None
+            self._set_timer(0)
+            self.controller.power_off()
+            return
+        at = time.strftime("%H:%M", time.localtime(self._timer_deadline))
+        self.timer_info.set(t("timer_at", time=at))
+        self._timer_job = self.root.after(int(min(remaining, 20) * 1000), self._timer_tick)
 
     # --- Updates ---
 
@@ -360,7 +622,7 @@ class App:
         release = self._release
         if release is None:
             return
-        if not (updater.can_self_update() and release.asset_url):
+        if not (updater.can_self_update() and release.asset_url and release.sha256):
             updater.open_page(release.page_url)
             return
         if not messagebox.askyesno("Edifier R990BT", t("update_confirm", version=release.version), parent=self.root):

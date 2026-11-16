@@ -19,6 +19,8 @@ Requires Windows 10 or 11 with Bluetooth 4.0 or later. The exe is not code-signe
 
 - **Input:** Bluetooth, Line 1, Line 2.
 - **Volume** (0 to 16, the speaker's own scale) and **EQ presets:** Music, Movie, Game.
+- **Scenes:** save input + EQ combinations (for example *TV* = Line 1 + Movie) and apply them with one click, also from the tray.
+- **Sleep timer:** turns the speaker off after 15 minutes to 3 hours.
 - **Connect audio (Win+K):** opens the Windows panel to connect the PC to the speaker over Bluetooth.
 - **Pair new device:** drops the current audio device and puts the speaker in pairing mode. The app reconnects by itself in a minute or two.
 - **Turn off:** standby. It can only be turned back on with the knob.
@@ -64,7 +66,7 @@ All in **Settings... > App**:
 
 - **Start with Windows** adds a per-user entry (`HKCU\...\CurrentVersion\Run`, no admin rights), also listed in Task Manager > Startup apps. The app starts minimized.
 - **Tray icon:** quick input switching from the menu next to the clock. Optionally, minimize and/or close to the tray. By default minimizing goes to the taskbar and closing quits.
-- **Updates:** checked at startup and once a day against the latest GitHub release. A bar in the window offers to download, replace the exe and restart. It updates the app only, not `edifier-cli.exe`.
+- **Updates:** checked at startup and once a day against the latest GitHub release. A bar in the window offers to download, replace the exe and restart. The download is checked against the SHA-256 that GitHub records for the release file. It updates the app only, not `edifier-cli.exe`.
 
 Only one copy runs at a time: opening it again brings up the running window.
 </details>
