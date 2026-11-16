@@ -67,6 +67,22 @@ ConneX has no setting that controls the speaker's auto-mute. The related feature
 
 The R990BT declares firmware update over BLE. ConneX asks Edifier's server whether an update exists for the product, using the signed-in user's token, and downloads the image if there is one. Whether an update for the R990BT exists can only be seen in the app itself.
 
+### Hardware variants and latest firmware
+
+ConneX ships an encrypted product table (`assets/products_release.json`, AES-256-CBC). Decrypted, it lists three R990BT hardware variants, told apart by the UUID the speaker advertises:
+
+| `id` | Model | Advertised UUID | `LastFirmwareVersion` |
+|---|---|---|---|
+| 365 | R990BT | `0000d300-...` | `1.0.2` |
+| 10010 | R990BT (optimized rev.) | `00007703-...` | `1.0.6` |
+| 10021 | R990BT (2026 rev.) | `00008b03-...` | (none yet) |
+
+The unit this project was verified on advertises `0000d300-...`, so it is `id` 365, whose latest firmware is **1.0.2** — the version already installed. The `1.0.6` build is for a different hardware revision (advertised UUID `7703`) and does not apply; ConneX will not offer it because the unit identifies with a different UUID. `IsFirmwareUpdate` is true for all three, so the speaker accepts OTA; there is simply nothing newer for this variant. All three report an empty `ProductId`/`VendorId`; the API's `product_id` is the numeric `id` (365 for this unit).
+
+### Where the firmware file comes from
+
+The version check is `GET /home/api/v1/ota-upgrade` on Edifier's app host (e.g. `foreign-app.edifier.com`), with `product_id`, `os`, `mac`, `current_version`, `app_version`, `lang_code`, a `timestamp`, and a `sign` (MD5 of the sorted `key=value` string plus a fixed key embedded in the app). It also carries the account token in `Authorization` (empty when signed out). The response (`FirmwareVersionBeanNew`) includes `FirmwareLinkUrl`, a full URL that `OkHttpOtaUtils.downloadOTAFile` fetches verbatim — there is no fixed firmware host hardcoded in the app. Edifier's own assets (product images, provider storage) sit on `edifier-us-app.s3.us-east-2.amazonaws.com` and `edifier-provider-oss.edifier.com`, so the firmware is most likely served from one of those buckets, but the exact URL is decided per request by the server and is not knowable from the app alone.
+
 ### Update protocol (from the decompiled app, not tested)
 
 ConneX's `CommandManager.setOtaReady` / `setOtaStart` and `OtaHelper.handleOta` show the flow:
