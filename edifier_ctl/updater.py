@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -117,8 +118,19 @@ def install(release: Release) -> None:
 
 
 def restart() -> None:
-    args = [sys.executable, UPDATED_FLAG]
-    subprocess.Popen(args, close_fds=True, creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+    spawn([sys.executable, UPDATED_FLAG])
+
+
+def spawn(args: list[str]) -> None:
+    """Start an independent copy of the app.
+
+    Without PYINSTALLER_RESET_ENVIRONMENT, the new onefile exe reuses this
+    process's temporary _MEI folder (inherited through the environment),
+    which is deleted when this process exits, and the new copy fails to
+    load Tk.
+    """
+    env = dict(os.environ)
+    subprocess.Popen(args, env=env, close_fds=True, creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
 
 
 def cleanup() -> None:

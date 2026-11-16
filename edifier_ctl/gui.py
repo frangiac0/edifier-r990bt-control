@@ -928,6 +928,20 @@ def self_test() -> int:
 def main() -> None:
     if "--self-test" in sys.argv:
         sys.exit(self_test())
+    if "--self-test-restart" in sys.argv:
+        # Build check: start a copy the way an update does, then exit at once.
+        out = sys.argv[sys.argv.index("--self-test-restart") + 1]
+        updater.spawn([sys.executable, "--self-test-child", out])
+        sys.exit(0)
+    if "--self-test-child" in sys.argv:
+        out = sys.argv[sys.argv.index("--self-test-child") + 1]
+        time.sleep(3)  # let the parent exit and remove its temporary files
+        root = tk.Tk()
+        ttk.Style(root).theme_use("clam")
+        root.destroy()
+        with open(out, "w", encoding="utf-8") as f:
+            f.write("ok")
+        sys.exit(0)
     events: queue.Queue = queue.Queue()
     updater.cleanup()
     wait = 30 if updater.UPDATED_FLAG in sys.argv else 0
