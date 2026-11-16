@@ -75,6 +75,18 @@ date stamp + a UTF-8 name). **Whether the DSP actually applies these writes
 is untested** — a command surface being present does not prove the audio is
 affected. **Confirmed on hardware:** sending custom_eq_set (0x44) per band changes the sound (each band ACKs with `01`), so the DSP applies it. The gain byte is signed dB; ConneX's sliders span about +/-6 dB and more clips the amplifier. Reselecting a preset with eq_set (0xC4) restores normal sound.
 
+**Band format (confirmed).** The query (`0x43`) and each set (`0x44`) use
+4-byte bands: `band index`, `frequency` (2 bytes, big-endian Hz), `gain`
+(1 signed byte, dB). The R990BT stores the frequency per band, so it is
+configurable, not fixed. A clean working curve used band centres
+60 / 150 / 400 / 1000 / 4000 / 12000 Hz with gains within +/-6 dB. Writing a
+band via `0x44` takes effect live; reselecting a preset via `0xC4` leaves
+custom mode.
+
+**Bonus opcodes seen as notifications:** `0x01` `song_name_query` and `0x02`
+`singer_name_query` carry the currently playing track title and artist (UTF-8),
+pushed by the speaker over A2DP.
+
 Also confirmed readable: `time_off_query` (`0xD3`) = `00 00` (internal sleep
 timer, off). Not implemented on this unit (no reply): `bass_sound_level_query`,
 `d2dp_volume_query`, `auto_shutdown_without_audio_query`, `device_state_query`,
