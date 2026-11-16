@@ -11,7 +11,14 @@ Control an **Edifier R990BT** speaker from a Windows PC over Bluetooth LE: input
 
 ## Download
 
-Get `EdifierR990BT.exe` from the [latest release](../../releases/latest) and run it. No installation and no Python needed; the app updates itself afterwards.
+From the [latest release](../../releases/latest):
+
+- **`EdifierR990BT-Setup.exe`** (recommended): installs for your user only, no admin rights, with a Start menu shortcut and an uninstaller.
+- **`EdifierR990BT.exe`**: portable, a single file you can run from any folder.
+
+Both update themselves. No Python needed.
+
+**On a phone, without a PC:** open the [phone remote](https://frangiac0.github.io/edifier-r990bt-control/) in Chrome on Android (or Bluefy on iPhone) and add it to the home screen.
 
 Requires Windows 10 or 11 with Bluetooth 4.0 or later. The exe is not code-signed, so SmartScreen may ask for **More info > Run anyway**.
 
@@ -25,7 +32,7 @@ Requires Windows 10 or 11 with Bluetooth 4.0 or later. The exe is not code-signe
 - **Pair new device:** drops the current audio device and puts the speaker in pairing mode. The app reconnects by itself in a minute or two.
 - **Turn off:** standby. It can only be turned back on with the knob.
 - **Prevent auto-mute** for audio played from the PC.
-- **Phone remote** over Wi-Fi, opened by scanning a QR code.
+- **Phone remote**, either directly over Bluetooth (no PC) or through the PC app over Wi-Fi.
 - **Settings:** speaker name, connection prompt tone, start with Windows, tray icon, minimize and close behaviour, automatic updates.
 - **Command-line tool** for scripts and hotkeys.
 
@@ -56,7 +63,9 @@ It only works for audio played by this PC (Bluetooth or a PC-to-RCA cable), not 
 <details>
 <summary><b>Phone remote</b></summary>
 
-Tick **Allow control from a phone on this Wi-Fi** and press **Show QR**. The page has the same controls and works while the app is running. The link carries a random key, so other devices on the network can't use it without the QR. Port 8765; when Windows asks, allow the app on **private** networks. In Brave, turn off forced HTTPS for the page.
+**Directly over Bluetooth, no PC.** The [web app](https://frangiac0.github.io/edifier-r990bt-control/) connects to the speaker with Web Bluetooth: input, volume, EQ, scenes (saved on the phone), pairing and power off. It works in Chrome on Android and in the Bluefy browser on iPhone (Safari has no Web Bluetooth). Use *Add to home screen* to install it. The speaker accepts one control connection at a time, so quit the PC app and ConneX first. The first time, pick **EDIFIER BLE** in the list; depending on the browser, later connections may ask again.
+
+**Through the PC app, over Wi-Fi.** Tick **Allow control from a phone on this Wi-Fi** and press **Show QR**. The page has the same controls and works while the app is running. The link carries a random key, so other devices on the network can't use it without the QR. Port 8765; when Windows asks, allow the app on **private** networks. In Brave, turn off forced HTTPS for the page.
 </details>
 
 <details>
