@@ -48,6 +48,7 @@ STRINGS = {
         "web_forbidden": "Open the link shown in the Edifier R990BT app on your PC.",
         "web_offline": "Can't reach the PC. Is the app running?",
         "web_error": "Could not start the phone remote: {error}",
+        "autostart": "Start with Windows (in the tray)",
     },
     "es": {
         "input": "ENTRADA",
@@ -89,6 +90,7 @@ STRINGS = {
         "web_forbidden": "Abrí el enlace que muestra la app Edifier R990BT en la PC.",
         "web_offline": "No se puede conectar con la PC. ¿Está abierta la app?",
         "web_error": "No se pudo iniciar el control desde el celular: {error}",
+        "autostart": "Iniciar con Windows (en la bandeja)",
     },
 }
 

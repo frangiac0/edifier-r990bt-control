@@ -9,7 +9,7 @@ from tkinter import messagebox, ttk
 
 from dataclasses import asdict
 
-from . import config, keepalive, r990bt, web
+from . import autostart, config, keepalive, r990bt, web
 from .controller import Controller, State
 from .i18n import t
 
@@ -44,12 +44,12 @@ def make_icon_image(size: int = 64):
 
 
 class App:
-    def __init__(self) -> None:
+    def __init__(self, start_minimized: bool = False, events: queue.Queue | None = None) -> None:
         self.root = tk.Tk()
         self.root.title("Edifier R990BT")
         self.root.configure(bg=BG)
         self.root.resizable(False, False)
-        self._events: queue.Queue = queue.Queue()
+        self._events: queue.Queue = events if events is not None else queue.Queue()
         self._state = State()
         self._dragging_volume = False
         self.tray = None
@@ -63,6 +63,8 @@ class App:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(100, self._pump)
         self._setup_tray()
+        if start_minimized and self.tray is not None:
+            self.root.withdraw()
         self._restore_settings()
         self.controller.start()
 
@@ -161,6 +163,14 @@ class App:
         self.btn_qr.pack(side="left", padx=(8, 0))
         self.btn_qr.state(["disabled"])
 
+        self.autostart_var = tk.BooleanVar(value=autostart.is_enabled())
+        self.autostart_check = ttk.Checkbutton(
+            frame, text=t("autostart"), variable=self.autostart_var, command=self._on_autostart_ui,
+        )
+        self.autostart_check.pack(anchor="w", pady=(16, 0))
+        if not autostart.available():
+            self.autostart_check.state(["disabled"])
+
         brow = ttk.Frame(frame)
         brow.pack(fill="x", pady=(18, 0))
         self.btn_settings = ttk.Button(brow, text=t("settings"), command=self._show_settings)
@@ -215,6 +225,7 @@ class App:
                 if kind == "state":
                     self._apply_state(data)
                 elif kind == "show":
+                    self.autostart_var.set(autostart.is_enabled())
                     self.root.deiconify()
                     self.root.lift()
                     self.root.focus_force()
@@ -263,11 +274,15 @@ class App:
     # --- Settings, keep-alive and phone remote ---
 
     def _restore_settings(self) -> None:
+        autostart.refresh()
         level = config.get("keepalive_level", keepalive.DEFAULT_LEVEL_DB)
         self._set_keepalive(bool(config.get("keepalive", False)), level, save=False)
         if config.get("web_enabled", False):
             self.web_var.set(True)
             self._on_web_ui()
+
+    def _on_autostart_ui(self) -> None:
+        self.autostart_var.set(autostart.set_enabled(self.autostart_var.get()))
 
     def _on_keepalive_ui(self) -> None:
         level = int(self.ka_level_var.get().split()[0])
@@ -454,7 +469,11 @@ def self_test() -> int:
 
     from . import web  # noqa: F401
 
+    from . import autostart
+
+    autostart.command()
     if sys.platform == "win32":
+        import winreg  # noqa: F401
         import winsound  # noqa: F401
         import bleak.backends.winrt.client  # noqa: F401
         import bleak.backends.winrt.scanner  # noqa: F401
@@ -467,7 +486,10 @@ def self_test() -> int:
 def main() -> None:
     if "--self-test" in sys.argv:
         sys.exit(self_test())
-    App().run()
+    events: queue.Queue = queue.Queue()
+    if not autostart.acquire_single_instance(lambda: events.put(("show", None))):
+        return  # the running copy shows its window
+    App(start_minimized=autostart.MINIMIZED_FLAG in sys.argv, events=events).run()
 
 
 if __name__ == "__main__":

@@ -37,6 +37,12 @@ Tick **Allow control from a phone on this Wi-Fi** and press **Show QR**. Scannin
 
 The link includes a random access key, so other devices on the network cannot use it without the QR. The server listens on port 8765. The first time, Windows asks whether to allow the app on the network: allow it on **private** networks.
 
+### Start with Windows
+
+Tick **Start with Windows (in the tray)** to have the app start hidden in the tray when you sign in. It is a per-user entry under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, so it needs no admin rights, and it also shows up in **Task Manager > Startup apps**, where it can be turned off too. If you move the exe, open it once from the new folder and the entry follows it.
+
+Only one copy of the app runs at a time: opening it again while it is in the tray just brings up its window.
+
 Closing the window keeps the app running in the system tray, next to the clock. The tray menu switches inputs without opening the window. Choose **Quit** there to exit.
 
 The first time, the app searches for the speaker and saves its address in `%APPDATA%\edifier-r990bt-control\config.json`. Delete that file to pair the app with a different speaker.

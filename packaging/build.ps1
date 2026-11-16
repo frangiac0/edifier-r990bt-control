@@ -17,6 +17,8 @@ Invoke-Checked $py -m PyInstaller @common --console --name edifier-cli packaging
 # The app exe has no console, so check its exit code explicitly.
 $p = Start-Process -FilePath "dist\EdifierR990BT.exe" -ArgumentList "--self-test" -Wait -PassThru
 if ($p.ExitCode -ne 0) { throw "Self-test failed with exit code $($p.ExitCode)" }
+# Toggle the per-user startup entry on the build machine and check it round-trips.
+Invoke-Checked $py -c "from edifier_ctl import autostart as a; assert a.set_enabled(True) and a.is_enabled(); assert not a.set_enabled(False) and not a.is_enabled(); print('autostart OK')"
 & dist\edifier-cli.exe --help | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "edifier-cli.exe --help failed" }
 Write-Host "Build OK"
