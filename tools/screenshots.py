@@ -57,7 +57,8 @@ def window_rect(widget) -> tuple[int, int, int, int]:
     ctypes.windll.dwmapi.DwmGetWindowAttribute(
         wt.HWND(hwnd), DWMWA_EXTENDED_FRAME_BOUNDS, ctypes.byref(rect), ctypes.sizeof(rect)
     )
-    return rect.left, rect.top, rect.right, rect.bottom
+    # Drop the 1 px border, which can show whatever is behind the window.
+    return rect.left + 1, rect.top + 1, rect.right - 1, rect.bottom - 1
 
 
 def grab(widget, name: str) -> None:
@@ -77,7 +78,9 @@ def step1() -> None:
     grab(root, "main-window.png")
     app._show_settings()
     win = app._settings_window
-    win.geometry("+520+40")
+    # Same height as the main window, so both images line up in the README.
+    win.update()
+    win.geometry(f"{win.winfo_width()}x{root.winfo_height()}+520+40")
     win.attributes("-topmost", True)
     root.after(1500, lambda: step2(win))
 
