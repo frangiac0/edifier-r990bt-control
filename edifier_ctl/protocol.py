@@ -31,6 +31,9 @@ OP_EQ_SET = 0xC4
 OP_MEDIA = 0xC2
 OP_A2DP_STATE = 0xC3
 OP_POWER_OFF = 0xCE
+OP_NAME_SET = 0xCA
+OP_PROMPT_TONE_GET = 0xF9
+OP_PROMPT_TONE_SET = 0xFA
 
 OPCODE_NAMES = {
     OP_CAPABILITIES: "capabilities",
@@ -45,6 +48,9 @@ OPCODE_NAMES = {
     OP_MEDIA: "playback",
     OP_A2DP_STATE: "Bluetooth audio state",
     OP_POWER_OFF: "power off",
+    OP_NAME_SET: "name (set)",
+    OP_PROMPT_TONE_GET: "prompt tone (query)",
+    OP_PROMPT_TONE_SET: "prompt tone (set)",
 }
 
 

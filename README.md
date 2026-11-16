@@ -19,6 +19,7 @@ Requirements: Windows 10 or 11 with Bluetooth 4.0 or later. Most laptops have it
 - **Input:** Bluetooth, Line 1, Line 2.
 - **Volume:** slider and `-` / `+` buttons (0 to 16, the speaker's own scale).
 - **EQ:** the speaker's three presets: Music, Movie and Game.
+- **Settings...:** rename the speaker (up to 30 characters) and turn the Bluetooth connection prompt tone on or off.
 - **Turn off:** powers the speaker down. It can only be turned back on with its knob; the app reconnects by itself when it is.
 
 ### Prevent auto-mute
@@ -68,6 +69,8 @@ edifier-cli eq movie
 | `source bt\|line1\|line2` | Switch input |
 | `volume [N\|+N\|-N]` | Show or set the volume |
 | `eq music\|movie\|game` | Select an EQ preset |
+| `name [new name]` | Show or change the speaker name |
+| `tone [on\|off]` | Show or set the Bluetooth prompt tone |
 | `off` | Turn the speaker off |
 | `info` | Show capabilities, name, firmware, input, volume and EQ |
 | `scan [--all]` | List nearby Edifier (or all) BLE devices |
@@ -111,7 +114,8 @@ Verified on an R990BT with firmware 1.0.2. Each change was set, acknowledged and
 | Input | `AA EC 61 00 00 F7` → `<group> <input>` | `AA EC 62 00 02 06 <input> <chk>` | group `06`; `01` Bluetooth, `02` Line 1, `03` Line 2 |
 | Volume | `AA EC 66 00 00 FC` → `<max> <current>` | `AA EC 67 00 01 <vol> <chk>` | 0 to 16 |
 | EQ preset | `AA EC D5 00 00 6B` → `<preset>` | `AA EC C4 00 01 <preset> <chk>` | `00` Music, `02` Movie, `01` Game |
-| Name | `AA EC C9 00 00 5F` | | UTF-8 |
+| Name | `AA EC C9 00 00 5F` | `AA EC CA <len> <UTF-8 name> <chk>` | up to 30 bytes |
+| Prompt tone | `AA EC F9 00 00 8F` → `<state>` | `AA EC FA 00 01 <state> <chk>` | `00` off, `01` on |
 | Firmware | `AA EC C6 00 00 5C` | | 3 bytes |
 | Capabilities | `AA EC D8 00 00 6E` | | 22 bytes |
 | Power off | | `AA EC CE 00 00 64` | no reply; the speaker turns off |

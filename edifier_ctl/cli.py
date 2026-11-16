@@ -198,6 +198,27 @@ async def cmd_off(args) -> None:
         out("Power-off sent. Turn the speaker back on with its knob.")
 
 
+async def cmd_name(args) -> None:
+    address = await resolve_address(args.address)
+    async with EdifierClient(address) as client:
+        if args.new_name:
+            ack = await client.set_name(" ".join(args.new_name))
+            out("Name sent" + ("" if ack else " (no ACK)"))
+            await asyncio.sleep(0.5)
+        out(f"Name: {await client.get_name()}")
+
+
+async def cmd_tone(args) -> None:
+    address = await resolve_address(args.address)
+    async with EdifierClient(address) as client:
+        if args.state:
+            ack = await client.set_prompt_tone(args.state == "on")
+            out("Prompt tone " + args.state + ("" if ack else " (no ACK)"))
+            await asyncio.sleep(0.5)
+        state = await client.get_prompt_tone()
+        out("Prompt tone: " + ("unknown (no reply)" if state is None else "on" if state else "off"))
+
+
 async def cmd_send(args) -> None:
     address = await resolve_address(args.address)
     payload = p.parse_hex(" ".join(args.payload)) if args.payload else b""
@@ -237,6 +258,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = command("eq", "select EQ preset: music, movie, game (or 0, 2, 1)", cmd_eq)
     s.add_argument("preset", type=parse_preset)
+
+    s = command("name", "show the speaker name, or change it (up to 30 characters)", cmd_name)
+    s.add_argument("new_name", nargs="*")
+
+    s = command("tone", "show the Bluetooth prompt tone setting, or turn it on/off", cmd_tone)
+    s.add_argument("state", nargs="?", choices=["on", "off"])
 
     command("off", "turn the speaker off (it can only be turned on with the knob)", cmd_off)
     command("forget", "forget the saved speaker and search again next time", cmd_forget, address=False)

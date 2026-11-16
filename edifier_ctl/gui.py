@@ -161,8 +161,13 @@ class App:
         self.btn_qr.pack(side="left", padx=(8, 0))
         self.btn_qr.state(["disabled"])
 
-        self.btn_power = ttk.Button(frame, text=t("power_off"), command=self._confirm_power_off)
-        self.btn_power.pack(anchor="e", pady=(18, 0))
+        brow = ttk.Frame(frame)
+        brow.pack(fill="x", pady=(18, 0))
+        self.btn_settings = ttk.Button(brow, text=t("settings"), command=self._show_settings)
+        self.btn_settings.pack(side="left")
+        self.btn_power = ttk.Button(brow, text=t("power_off"), command=self._confirm_power_off)
+        self.btn_power.pack(side="right")
+        self._settings_window = None
 
         self._set_enabled(False)
 
@@ -210,6 +215,11 @@ class App:
                     self.root.deiconify()
                     self.root.lift()
                     self.root.focus_force()
+                elif kind == "name_result":
+                    win = self._settings_window
+                    if win is not None and win.winfo_exists():
+                        win._name_msg.set(t("name_saved") if data else t("name_failed"))
+                        win._save_btn.state(["!disabled"])
                 elif kind == "keepalive":
                     enabled, level = data
                     self._set_keepalive(enabled, level)
@@ -222,6 +232,7 @@ class App:
 
     def _apply_state(self, st: State) -> None:
         self._state = st
+        self._refresh_settings_window(st)
         self.status_var.set(st.status)
         self._set_enabled(st.connected)
         self.source_var.set(st.source if st.source is not None else -1)
@@ -239,7 +250,7 @@ class App:
         state = "normal" if enabled else "disabled"
         for b in self.source_buttons:
             b.configure(state=state)
-        for w in (self.btn_down, self.btn_up, self.volume_scale, self.btn_power, *self.eq_buttons):
+        for w in (self.btn_down, self.btn_up, self.volume_scale, self.btn_power, self.btn_settings, *self.eq_buttons):
             w.state(["!disabled"] if enabled else ["disabled"])
 
     # --- Settings, keep-alive and phone remote ---
@@ -327,6 +338,64 @@ class App:
             pass
         tk.Label(win, text=url, bg="white", fg=FG, font=("Segoe UI", 9)).pack(padx=16, pady=(0, 16))
         self._qr_window = win
+
+    def _show_settings(self) -> None:
+        if self._settings_window is not None and self._settings_window.winfo_exists():
+            self._settings_window.lift()
+            return
+        win = tk.Toplevel(self.root)
+        win.title(t("settings_title"))
+        win.configure(bg=BG)
+        win.resizable(False, False)
+        body = ttk.Frame(win, padding=(20, 16, 20, 18))
+        body.pack(fill="both", expand=True)
+
+        ttk.Label(body, text=t("speaker_name"), style="Section.TLabel").pack(anchor="w")
+        row = ttk.Frame(body)
+        row.pack(fill="x", pady=(6, 0))
+        name_var = tk.StringVar(value=self._state.name or "")
+        entry = ttk.Entry(row, textvariable=name_var, width=30)
+        entry.pack(side="left", fill="x", expand=True)
+        msg_var = tk.StringVar(value="")
+
+        def done(ok: bool) -> None:
+            self._events.put(("name_result", ok))
+
+        def save() -> None:
+            name = name_var.get().strip()
+            if not name or len(name.encode("utf-8")) > 30:
+                msg_var.set(t("name_too_long"))
+                return
+            save_btn.state(["disabled"])
+            self.controller.set_name(name, on_done=done)
+
+        save_btn = ttk.Button(row, text=t("save"), command=save)
+        save_btn.pack(side="left", padx=(8, 0))
+        ttk.Label(body, text=t("name_hint"), style="Muted.TLabel", wraplength=320).pack(anchor="w", pady=(4, 0))
+        ttk.Label(body, textvariable=msg_var, style="Muted.TLabel", wraplength=320).pack(anchor="w", pady=(4, 0))
+
+        tone_var = tk.BooleanVar(value=bool(self._state.prompt_tone))
+        tone = ttk.Checkbutton(
+            body, text=t("prompt_tone"), variable=tone_var,
+            command=lambda: self.controller.set_prompt_tone(tone_var.get()),
+        )
+        tone.pack(anchor="w", pady=(16, 0))
+        if self._state.prompt_tone is None:
+            tone.state(["disabled"])
+
+        win._name_msg = msg_var
+        win._save_btn = save_btn
+        win._tone_var = tone_var
+        win._tone = tone
+        self._settings_window = win
+
+    def _refresh_settings_window(self, st: State) -> None:
+        win = self._settings_window
+        if win is None or not win.winfo_exists():
+            return
+        if st.prompt_tone is not None:
+            win._tone_var.set(st.prompt_tone)
+            win._tone.state(["!disabled"] if st.connected else ["disabled"])
 
     def _confirm_power_off(self) -> None:
         if messagebox.askyesno("Edifier R990BT", t("power_off_confirm"), icon="warning", parent=self.root):

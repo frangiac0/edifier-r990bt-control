@@ -33,6 +33,7 @@ class State:
     volume: int | None = None
     volume_max: int = r990bt.VOLUME_MAX
     eq: int | None = None
+    prompt_tone: bool | None = None
 
 
 class Controller:
@@ -72,6 +73,12 @@ class Controller:
 
     def set_eq(self, preset: int) -> None:
         self._submit(self._do_set_eq(preset))
+
+    def set_prompt_tone(self, enabled: bool) -> None:
+        self._submit(self._do_set_prompt_tone(enabled))
+
+    def set_name(self, name: str, on_done: Callable[[bool], None] | None = None) -> None:
+        self._submit(self._do_set_name(name, on_done))
 
     def power_off(self) -> None:
         self._submit(self._do_power_off())
@@ -142,6 +149,7 @@ class Controller:
         name = name_frame.payload.decode("utf-8", "replace").strip() if name_frame else "Edifier"
         self._powered_off = False
         self._update(connected=True, name=name, status=t("connected", name=name))
+        await self._refresh_prompt_tone()
 
         misses = 0
         while not self._stopping:
@@ -188,6 +196,32 @@ class Controller:
         await self._request(p.OP_VOLUME_SET, bytes([volume]))
         self._hold["volume"] = time.monotonic() + HOLD_SECONDS
         self._update(volume=volume)
+
+    async def _refresh_prompt_tone(self) -> None:
+        frame = await self._request(p.OP_PROMPT_TONE_GET)
+        if frame and frame.payload:
+            self._update(prompt_tone=frame.payload[0] == 1)
+
+    async def _do_set_prompt_tone(self, enabled: bool) -> None:
+        await self._request(p.OP_PROMPT_TONE_SET, bytes([1 if enabled else 0]))
+        await asyncio.sleep(0.5)
+        await self._refresh_prompt_tone()
+
+    async def _do_set_name(self, name: str, on_done) -> None:
+        ok = False
+        try:
+            data = name.strip().encode("utf-8")
+            if self._client and 0 < len(data) <= 30:
+                await self._request(p.OP_NAME_SET, data)
+                await asyncio.sleep(0.5)
+                frame = await self._request(p.OP_NAME)
+                if frame:
+                    new_name = frame.payload.decode("utf-8", "replace").strip()
+                    ok = new_name == name.strip()
+                    self._update(name=new_name, status=t("connected", name=new_name))
+        finally:
+            if on_done:
+                on_done(ok)
 
     async def _do_power_off(self) -> None:
         if self._client is None or self._lock is None:

@@ -15,6 +15,8 @@ from . import protocol as p
 SERVICE_SUFFIX = "-1a48-11e9-ab14-d663bd873d93"
 NOTIFY_CHAR = "48090001" + SERVICE_SUFFIX
 WRITE_CHAR = "48090002" + SERVICE_SUFFIX
+WRITE_CHUNK = 20
+NAME_MAX_BYTES = 30  # R990BT capability byte 3 = 02
 
 
 # UUID the R990BT advertises so that ConneX can find it.
@@ -108,7 +110,9 @@ class EdifierClient:
             self._queue.put_nowait(frame)
 
     async def send_raw(self, data: bytes) -> None:
-        await self._client.write_gatt_char(WRITE_CHAR, data, response=self._write_with_response)
+        # ConneX writes long frames in 20-byte pieces and the speaker reassembles them.
+        for i in range(0, len(data), WRITE_CHUNK):
+            await self._client.write_gatt_char(WRITE_CHAR, data[i : i + WRITE_CHUNK], response=self._write_with_response)
 
     async def request(self, opcode: int, payload: bytes = b"", timeout: float = 3.0, app: int = 0xEC) -> p.Frame | None:
         """Send a request and wait for the first reply with the same opcode."""
@@ -148,6 +152,23 @@ class EdifierClient:
     async def power_off(self) -> None:
         """Turn the speaker off. It sends no reply and cannot be turned back on over BLE."""
         await self.send_raw(p.build(p.OP_POWER_OFF))
+
+    async def get_name(self) -> str | None:
+        frame = await self.request(p.OP_NAME)
+        return frame.payload.decode("utf-8", "replace").strip() if frame else None
+
+    async def set_name(self, name: str) -> p.Frame | None:
+        data = name.strip().encode("utf-8")
+        if not data or len(data) > NAME_MAX_BYTES:
+            raise ValueError(f"the name must be 1 to {NAME_MAX_BYTES} bytes long")
+        return await self.request(p.OP_NAME_SET, data)
+
+    async def get_prompt_tone(self) -> bool | None:
+        frame = await self.request(p.OP_PROMPT_TONE_GET)
+        return frame.payload[0] == 1 if frame and frame.payload else None
+
+    async def set_prompt_tone(self, enabled: bool) -> p.Frame | None:
+        return await self.request(p.OP_PROMPT_TONE_SET, bytes([1 if enabled else 0]))
 
     async def get_volume(self) -> tuple[int, int] | None:
         frame = await self.request(p.OP_VOLUME_GET)
