@@ -56,7 +56,8 @@ EQ profile 15 has three presets. ConneX lists them in this order:
 | `0x86` / `0x87` | Multi prompt tone query / set | Not used: the R990BT does not flag it |
 | `0xCD` | Disconnect Bluetooth audio | Verified: leaves the speaker in pairing mode |
 | `0x07` | Factory reset | Not used, on purpose |
-| `0x10`-`0x12` | Firmware update | Not used, on purpose |
+| `0x10` / `0x11` | Firmware update (see below) | Not used, on purpose |
+| `0x12` | Not sent or handled anywhere in ConneX | Unknown |
 
 ## Auto-mute and standby
 
@@ -65,3 +66,15 @@ ConneX has no setting that controls the speaker's auto-mute. The related feature
 ## Firmware updates
 
 The R990BT declares firmware update over BLE. ConneX asks Edifier's server whether an update exists for the product, using the signed-in user's token, and downloads the image if there is one. Whether an update for the R990BT exists can only be seen in the app itself.
+
+### Update protocol (from the decompiled app, not tested)
+
+ConneX's `CommandManager.setOtaReady` / `setOtaStart` and `OtaHelper.handleOta` show the flow:
+
+1. **`0x10` "OTA ready"**, sent by the app. Payload: firmware file size (4 bytes, big-endian), target version (3 bytes, e.g. `01 00 03`), maximum packet size (2 bytes; ConneX uses 512). Firmwares split into MCU and Bluetooth parts add a flag byte `01` and both part sizes (4 + 4 bytes), 18 bytes in total. If the speaker doesn't answer, the app resends it up to three times.
+2. **`0x11` from the speaker** asks for data: byte 0 is a status, bytes 1-2 the number of bytes wanted. Status `00` means "send the next block", `02` "resend the last one", `07`-`0A` select the MCU or Bluetooth part of a split image; anything else is an error and the app aborts.
+3. **`0x11` from the app** carries the data: status echoed, a "last block" flag (`01` on the final one), then the bytes.
+4. After the last block the speaker verifies the image and restarts; the app waits for it to reconnect and reads the version (`0xC6`) to confirm.
+
+There is no command to cancel an update: the app only resets its own state. A `0x10` with made-up values would announce a file that never arrives; what the firmware does then (time out and resume, or stay waiting until it is powered off) is not visible from the app.
+
