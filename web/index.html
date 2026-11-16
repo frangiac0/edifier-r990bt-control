@@ -102,6 +102,11 @@
       </div>
     </div>
 
+    <div class="timer-row" style="display:flex;align-items:center;gap:8px;margin-top:20px">
+      <label id="l-timer" for="timer"></label>
+      <select id="timer" style="flex:1;font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)"></select>
+    </div>
+
     <div class="row actions">
       <button id="pair" class="quiet"></button>
       <button id="off" class="quiet"></button>
@@ -120,6 +125,7 @@ const T = {
     connect: "Connect to the speaker", reconnect: "Reconnect", disconnect: "Disconnect",
     input: "INPUT", volume: "VOLUME", eq: "EQUALIZER", scenes: "SCENES", edit: "Edit", done: "Done",
     custom: "Custom", profile: "Profile", save: "Save as...", nameP: "Profile name:", nowPlaying: "Now playing: {track}",
+    timer: "Turn off in", timerOff: "Off", min: "min", hours: "h",
     music: "Music", movie: "Movie", game: "Game",
     scenesEmpty: "No scenes yet. Use Edit to save an input and EQ combination.",
     scene: "Scene", name: "Name", sceneInput: "Input", sceneEq: "EQ", newScene: "New", del: "Delete",
@@ -138,6 +144,7 @@ const T = {
     connect: "Conectar con el parlante", reconnect: "Reconectar", disconnect: "Desconectar",
     input: "ENTRADA", volume: "VOLUMEN", eq: "ECUALIZADOR", scenes: "ESCENAS", edit: "Editar", done: "Listo",
     custom: "Personalizado", profile: "Perfil", save: "Guardar como...", nameP: "Nombre del perfil:", nowPlaying: "Suena: {track}",
+    timer: "Apagar en", timerOff: "Desactivado", min: "min", hours: "h",
     music: "Música", movie: "Película", game: "Juegos",
     scenesEmpty: "Todavía no hay escenas. Usá Editar para guardar una combinación de entrada y EQ.",
     scene: "Escena", name: "Nombre", sceneInput: "Entrada", sceneEq: "EQ", newScene: "Nueva", del: "Eliminar",
@@ -163,7 +170,9 @@ const SERVICE = "4809d301-1a48-11e9-ab14-d663bd873d93";
 const NOTIFY = "48090001-1a48-11e9-ab14-d663bd873d93";
 const WRITE = "48090002-1a48-11e9-ab14-d663bd873d93";
 const OP = { SRC_GET: 0x61, SRC_SET: 0x62, VOL_GET: 0x66, VOL_SET: 0x67, EQ_GET: 0xD5, EQ_SET: 0xC4,
-  OFF: 0xCE, PAIR: 0xCD, CUSTOM_SET: 0x44, SONG: 0x01, SINGER: 0x02 };
+  OFF: 0xCE, PAIR: 0xCD, CUSTOM_SET: 0x44, SONG: 0x01, SINGER: 0x02,
+  TIMER_SET: 0xD1, TIMER_CANCEL: 0xD2, TIMER_GET: 0xD3 };
+const TIMER_MINUTES = [15, 30, 45, 60, 90, 120, 180];
 const EQ_BANDS = [60, 150, 400, 1000, 4000, 12000];
 const GAIN_LIMIT = 6;
 const DEFAULT_PROFILES = {
@@ -200,7 +209,7 @@ function parse(bytes) {
 // ---- BLE link ----
 let device = null, writeChar = null, waiters = [], chain = Promise.resolve(), pollTimer = null;
 const state = { connected: false, source: null, volume: null, eq: null,
-  eqMode: "preset", customGains: [0, 0, 0, 0, 0, 0], title: null, artist: null };
+  eqMode: "preset", customGains: [0, 0, 0, 0, 0, 0], title: null, artist: null, timer: 0 };
 
 function onNotify(e) {
   const v = e.target.value;
@@ -254,6 +263,8 @@ async function refresh() {
   if (v && v.payload.length >= 2) state.volume = v.payload[1];
   const q = await request(OP.EQ_GET);
   if (q && q.payload.length >= 1) state.eq = q.payload[0];
+  const tm = await request(OP.TIMER_GET);
+  if (tm && tm.payload.length >= 2) state.timer = (tm.payload[0] << 8) | tm.payload[1];
   render();
 }
 
@@ -444,6 +455,20 @@ $("off").onclick = async () => {
   await request(OP.OFF, [], false);
 };
 
+function timerLabel(m) {
+  if (!m) return t("timerOff");
+  return m < 60 ? `${m} ${t("min")}` : `${m / 60} ${t("hours")}`;
+}
+const timerSel = $("timer");
+timerSel.add(new Option(timerLabel(0), "0"));
+TIMER_MINUTES.forEach((m) => timerSel.add(new Option(timerLabel(m), String(m))));
+timerSel.onchange = async () => {
+  const m = +timerSel.value;
+  state.timer = m;
+  if (m) await request(OP.TIMER_SET, [(m >> 8) & 0xFF, m & 0xFF], false);
+  else await request(OP.TIMER_CANCEL, [], false);
+};
+
 function renderScenes() {
   const box = $("scenes");
   box.textContent = "";
@@ -500,6 +525,8 @@ function render() {
   $("connect").classList.toggle("primary", !on);
   srcButtons.forEach((b) => { b.disabled = !on; b.classList.toggle("on", on && +b.dataset.code === state.source); });
   eqButtons.forEach((b) => { b.disabled = !on; b.classList.toggle("on", on && state.eqMode === "preset" && +b.dataset.code === state.eq); });
+  timerSel.disabled = !on;
+  timerSel.value = String(state.timer || 0);
   customBtn.disabled = !on;
   customBtn.classList.toggle("on", on && state.eqMode === "custom");
   $("eq-custom").hidden = !(on && state.eqMode === "custom");
@@ -513,7 +540,7 @@ function render() {
 // Static texts
 const texts = {
   "l-input": "input", "l-volume": "volume", "l-eq": "eq", "l-scenes": "scenes", "edit-scenes": "edit",
-  "l-eq-profile": "profile", "eq-save": "save", "eq-del": "del",
+  "l-eq-profile": "profile", "eq-save": "save", "eq-del": "del", "l-timer": "timer",
   "l-scene-pick": "scene", "l-scene-name": "name", "l-scene-source": "sceneInput", "l-scene-eq": "sceneEq",
   "scene-new": "newScene", "scene-del": "del", "scene-done": "done", pair: "pair", off: "off", foot: "foot",
 };

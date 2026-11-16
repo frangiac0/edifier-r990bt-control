@@ -285,10 +285,6 @@ class App:
         )
         self.timer_box.pack(side="left", padx=(8, 0))
         self.timer_box.bind("<<ComboboxSelected>>", lambda e: self._on_timer_ui())
-        self.timer_info = tk.StringVar(value="")
-        ttk.Label(trow, textvariable=self.timer_info, style="Muted.TLabel").pack(side="left", padx=(8, 0))
-        self._timer_job = None
-        self._timer_deadline = None
 
         brow = ttk.Frame(frame)
         brow.pack(fill="x", pady=(14, 0))
@@ -334,7 +330,7 @@ class App:
         def timer_items():
             yield pystray.MenuItem(
                 t("timer_off"), lambda: self._events.put(("timer", 0)),
-                checked=lambda item: self._timer_deadline is None, radio=True,
+                checked=lambda item: self._state.sleep_timer_min == 0, radio=True,
             )
             for m in TIMER_MINUTES:
                 yield pystray.MenuItem(
@@ -421,6 +417,7 @@ class App:
             self.eq_var.set(st.eq if st.eq is not None else -1)
         now = " - ".join(x for x in (st.track_title, st.track_artist) if x)
         self.now_var.set(t("now_playing", track=now) if now else "")
+        self.timer_var.set(timer_label(st.sleep_timer_min) if st.sleep_timer_min else t("timer_off"))
         self.volume_scale.configure(to=st.volume_max)
         if st.volume is not None and not self._dragging_volume:
             self.volume_var.set(st.volume)
@@ -682,11 +679,11 @@ class App:
         eq_box.bind("<<ComboboxSelected>>", on_change)
         refresh_list(0)
 
-    # --- Sleep timer ---
+    # --- Sleep timer (native: the speaker powers itself off) ---
 
     @property
-    def _timer_minutes(self) -> int | None:
-        return getattr(self, "_timer_set_minutes", None) if self._timer_deadline else None
+    def _timer_minutes(self) -> int:
+        return self._state.sleep_timer_min
 
     def _on_timer_ui(self) -> None:
         label = self.timer_var.get()
@@ -694,31 +691,10 @@ class App:
         self._set_timer(minutes)
 
     def _set_timer(self, minutes: int) -> None:
-        if self._timer_job is not None:
-            self.root.after_cancel(self._timer_job)
-            self._timer_job = None
-        if minutes:
-            self._timer_deadline = time.time() + minutes * 60
-            self._timer_set_minutes = minutes
-            self.timer_var.set(timer_label(minutes))
-            self._timer_tick()
-        else:
-            self._timer_deadline = None
-            self.timer_var.set(t("timer_off"))
-            self.timer_info.set("")
+        self.controller.set_sleep_timer(minutes)
+        self.timer_var.set(timer_label(minutes) if minutes else t("timer_off"))
         if self.tray is not None:
             self.tray.update_menu()
-
-    def _timer_tick(self) -> None:
-        remaining = self._timer_deadline - time.time()
-        if remaining <= 0:
-            self._timer_job = None
-            self._set_timer(0)
-            self.controller.power_off()
-            return
-        at = time.strftime("%H:%M", time.localtime(self._timer_deadline))
-        self.timer_info.set(t("timer_at", time=at))
-        self._timer_job = self.root.after(int(min(remaining, 20) * 1000), self._timer_tick)
 
     # --- Updates ---
 

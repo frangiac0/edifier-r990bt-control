@@ -28,7 +28,7 @@ Requires Windows 10 or 11 with Bluetooth 4.0 or later. The exe is not code-signe
 - **Volume** (0 to 16, the speaker's own scale) and **EQ:** the three presets (Music, Movie, Game) plus a **6-band custom EQ** with saveable profiles (Rock, Pop, and your own).
 - **Now playing:** shows the current track and artist over Bluetooth.
 - **Scenes:** save input + EQ combinations (for example *TV* = Line 1 + Movie) and apply them with one click, also from the tray.
-- **Sleep timer:** turns the speaker off after 15 minutes to 3 hours.
+- **Sleep timer:** the speaker's own scheduled power-off, so it turns off on its own even with the app closed (15 min to 3 h).
 - **Connect audio (Win+K):** opens the Windows panel to connect the PC to the speaker over Bluetooth.
 - **Pair new device:** drops the current audio device and puts the speaker in pairing mode. The app reconnects by itself in a minute or two.
 - **Turn off:** standby. It can only be turned back on with the knob.

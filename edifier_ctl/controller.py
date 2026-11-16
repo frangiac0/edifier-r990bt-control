@@ -41,6 +41,7 @@ class State:
     custom_name: str | None = None
     track_title: str | None = None
     track_artist: str | None = None
+    sleep_timer_min: int = 0        # speaker's native scheduled power-off (0 = off)
 
 
 class Controller:
@@ -105,6 +106,9 @@ class Controller:
 
     def power_off(self) -> None:
         self._submit(self._do_power_off())
+
+    def set_sleep_timer(self, minutes: int) -> None:
+        self._submit(self._do_set_sleep_timer(minutes))
 
     def forget_device(self) -> None:
         config.forget_address()
@@ -219,6 +223,9 @@ class Controller:
         eq = await self._request(p.OP_EQ_GET)
         if eq and eq.payload:
             changes["eq"] = eq.payload[0]
+        tmr = await self._request(p.OP_TIMER_GET)
+        if tmr and len(tmr.payload) >= 2:
+            changes["sleep_timer_min"] = (tmr.payload[0] << 8) | tmr.payload[1]
         now = time.monotonic()
         changes = {k: v for k, v in changes.items() if self._hold.get(k, 0) <= now}
         if src is None and vol is None and eq is None:
@@ -275,6 +282,15 @@ class Controller:
             await self._client.disconnect()
         except Exception:
             pass
+
+    async def _do_set_sleep_timer(self, minutes: int) -> None:
+        minutes = max(0, min(600, int(minutes)))
+        if minutes:
+            await self._request(p.OP_TIMER_SET, bytes([(minutes >> 8) & 0xFF, minutes & 0xFF]))
+        else:
+            await self._request(p.OP_TIMER_CANCEL)
+        self._hold["sleep_timer_min"] = time.monotonic() + HOLD_SECONDS
+        self._update(sleep_timer_min=minutes)
 
     async def _do_power_off(self) -> None:
         if self._client is None or self._lock is None:
