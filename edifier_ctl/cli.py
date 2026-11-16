@@ -237,6 +237,81 @@ async def cmd_send(args) -> None:
         await asyncio.sleep(args.wait)
 
 
+# --- Safe read-only opcode probing ---------------------------------------
+#
+# These are the opcodes we already know change the speaker's state or are part
+# of firmware update / reset. The probe NEVER sends any of them, and it only
+# ever sends an empty payload, so it cannot carry data into a write command.
+DANGEROUS_OPCODES = {
+    p.OP_SOURCE_SET, p.OP_VOLUME_SET, p.OP_EQ_SET, p.OP_NAME_SET,
+    p.OP_PROMPT_TONE_SET, p.OP_POWER_OFF, p.OP_DISCONNECT_AUDIO, p.OP_MEDIA,
+    0x07,              # factory reset
+    0x10, 0x11, 0x12,  # firmware update
+    0x86, 0x87,        # multi prompt tone set
+    0xC2, 0xB8,        # playback / LAN-switch set
+}
+
+# Opcodes that look like queries: the known read opcodes, plus the even/low
+# partners of known get/set pairs. Default probe target; low risk.
+LIKELY_QUERY_OPCODES = [
+    p.OP_CAPABILITIES, p.OP_NAME, p.OP_FIRMWARE, p.OP_SOURCE_GET,
+    p.OP_VOLUME_GET, p.OP_EQ_GET, p.OP_PROMPT_TONE_GET, p.OP_A2DP_STATE,
+    0x60, 0x63, 0x64, 0x65, 0x68, 0x69,   # neighbours of input/volume gets
+    0xC5, 0xC7, 0xC8, 0xCB, 0xCC, 0xCF,   # neighbours of name/firmware/eq
+    0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD6, 0xD7, 0xD9,  # around eq/capabilities
+    0xDA, 0xDB, 0xDC, 0xF0, 0xF1, 0xF8, 0xFB, 0xFC,  # status-like ranges
+]
+
+
+async def cmd_probe(args) -> None:
+    address = await resolve_address(args.address)
+    if args.range:
+        lo, hi = (int(x, 16) for x in args.range)
+        if not (0 <= lo <= hi <= 0xFF):
+            out("Range must be two hex bytes, low high (e.g. --range 60 70).")
+            raise SystemExit(2)
+        targets = list(range(lo, hi + 1))
+        if not args.i_understand_the_risk:
+            out(
+                "A range sweep sends every opcode in the range except the known "
+                "dangerous ones. Unknown opcodes could still change the speaker.\n"
+                "Re-run with --i-understand-the-risk to proceed."
+            )
+            raise SystemExit(2)
+    else:
+        targets = list(LIKELY_QUERY_OPCODES)
+
+    skipped = sorted(o for o in targets if o in DANGEROUS_OPCODES)
+    targets = [o for o in targets if o not in DANGEROUS_OPCODES]
+    known = {
+        p.OP_CAPABILITIES, p.OP_NAME, p.OP_FIRMWARE, p.OP_SOURCE_GET,
+        p.OP_VOLUME_GET, p.OP_EQ_GET, p.OP_PROMPT_TONE_GET, p.OP_A2DP_STATE,
+    }
+
+    out(f"Probing {len(targets)} read-only opcodes (empty payload, {args.wait}s each).")
+    if skipped:
+        out("Skipped (known state-changing): " + " ".join(f"{o:02X}" for o in skipped))
+    out("Only opcodes that reply are shown. Nothing is written to the speaker.\n")
+
+    answered = []
+    async with EdifierClient(address) as client:
+        for op in targets:
+            reply = await client.request(op, b"", timeout=args.wait)
+            if reply is None:
+                continue
+            tag = "known" if op in known else "UNDOCUMENTED"
+            answered.append((op, reply, tag))
+            out(f"  {op:02X} -> {reply.describe()}   [{tag}]")
+
+    out("")
+    new = [(o, r) for o, r, t in answered if t == "UNDOCUMENTED"]
+    if new:
+        out(f"{len(new)} undocumented opcode(s) replied: " + " ".join(f"{o:02X}" for o, _ in new))
+        out("Share this output; these are candidates for new read commands.")
+    else:
+        out("No undocumented opcodes replied. Nothing new beyond what is known.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="edifier_ctl", description="Edifier R990BT BLE control and diagnostics")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -276,6 +351,13 @@ def build_parser() -> argparse.ArgumentParser:
     command("pair", "disconnect the audio device and put the speaker in pairing mode", cmd_pair)
     command("off", "turn the speaker off (it can only be turned on with the knob)", cmd_off)
     command("forget", "forget the saved speaker and search again next time", cmd_forget, address=False)
+
+    s = command("probe", "safely query read-only opcodes to look for undocumented ones", cmd_probe)
+    s.add_argument("--range", nargs=2, metavar=("LOW", "HIGH"),
+                   help="sweep a hex opcode range instead of the curated list (e.g. 60 70)")
+    s.add_argument("--i-understand-the-risk", action="store_true",
+                   help="required for --range: unknown opcodes could change the speaker")
+    s.add_argument("--wait", type=float, default=1.0, help="seconds to wait for each reply")
 
     s = command("send", "send an arbitrary command (advanced)", cmd_send)
     s.add_argument("opcode", help="opcode in hex, e.g. 61")

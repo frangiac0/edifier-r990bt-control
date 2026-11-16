@@ -102,6 +102,7 @@ edifier-cli source line1
 | `scan [--all]` | List nearby Edifier (or all) BLE devices |
 | `gatt` | List the speaker's GATT services |
 | `watch` | Print the active input while you turn the knob |
+| `probe` | Safely query read-only opcodes to look for undocumented ones |
 | `send <opcode> [payload]` | Send a raw command (advanced) |
 | `forget` | Forget the saved speaker |
 
