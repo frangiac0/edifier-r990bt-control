@@ -15,16 +15,24 @@ Invoke-Checked $py -m PyInstaller @common --windowed --name EdifierR990BT --hidd
 Invoke-Checked $py -m PyInstaller @common --console --name edifier-cli packaging\cli.py
 
 # The app exe has no console, so check its exit code explicitly.
-$p = Start-Process -FilePath "dist\EdifierR990BT.exe" -ArgumentList "--self-test" -Wait -PassThru
-if ($p.ExitCode -ne 0) { throw "Self-test failed with exit code $($p.ExitCode)" }
+# Never use -Wait here: it also waits for child processes, and a failing
+# windowed exe sits on an error dialog forever.
+function Invoke-App([string[]]$arguments, [int]$seconds = 60) {
+  $p = Start-Process -FilePath "dist\EdifierR990BT.exe" -ArgumentList $arguments -PassThru
+  if (-not $p.WaitForExit($seconds * 1000)) {
+    Get-Process EdifierR990BT -ErrorAction SilentlyContinue | Stop-Process -Force
+    throw "EdifierR990BT.exe $arguments did not finish in $seconds s"
+  }
+  return $p.ExitCode
+}
+$code = Invoke-App @("--self-test")
+if ($code -ne 0) { throw "Self-test failed with exit code $code" }
 # An update restarts the app as a new process: check that the new copy still
 # starts Tk after the old one has exited and removed its temporary files.
 $marker = Join-Path $env:RUNNER_TEMP "restart-ok.txt"
 if (-not $env:RUNNER_TEMP) { $marker = Join-Path $env:TEMP "restart-ok.txt" }
 Remove-Item $marker -ErrorAction SilentlyContinue
-# (-Wait would also wait for the child, which hangs on an error dialog if it fails.)
-$p = Start-Process -FilePath "dist\EdifierR990BT.exe" -ArgumentList "--self-test-restart", "`"$marker`"" -PassThru
-$p.WaitForExit()
+Invoke-App @("--self-test-restart", "`"$marker`"") 30 | Out-Null
 for ($i = 0; $i -lt 40 -and -not (Test-Path $marker); $i++) { Start-Sleep -Milliseconds 500 }
 if (-not (Test-Path $marker)) {
   Get-Process EdifierR990BT -ErrorAction SilentlyContinue | Stop-Process -Force

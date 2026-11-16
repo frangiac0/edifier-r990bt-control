@@ -149,7 +149,7 @@ def spawn(args: list[str]) -> None:
     which is deleted when this process exits, and the new copy fails to
     load Tk.
     """
-    env = dict(os.environ)
+    env = dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT="1")
     subprocess.Popen(args, env=env, close_fds=True, creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
 
 
