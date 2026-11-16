@@ -239,11 +239,12 @@ async def cmd_eq_test(args) -> None:
     whether it has any effect, then restores a normal preset. Fully reversible.
     """
     address = await resolve_address(args.address)
-    gain = args.gain
+    # ConneX's custom-EQ sliders span about +/-6 dB; more than that clips the amp.
+    gain = max(-6, min(6, args.gain))
     # 6 bands, 4 bytes each: band index, freq hi, freq lo, signed gain (dB).
-    # Boost the low bands and cut the highs for an unmistakable change.
+    # A gentle, musical bass lift (no harsh treble cut) to check it sounds clean.
     freqs = [60, 150, 400, 1000, 4000, 12000]
-    curve = [gain, gain, gain // 2, 0, -gain, -gain]
+    curve = [gain, max(1, gain - 1), max(0, gain - 2), 0, 0, 0]
 
     out("Experimental custom-EQ test. This WRITES a custom EQ to the speaker,")
     out("then restores a preset. Play music now so you can hear any change.")
@@ -264,7 +265,7 @@ async def cmd_eq_test(args) -> None:
         if current:
             out(f"Current custom EQ: {current.payload.hex(' ').upper()}")
 
-        out(f"\nApplying custom EQ (gain {gain:+d} dB on lows, {-gain:+d} on highs)...")
+        out(f"\nApplying a gentle bass lift (+{gain} dB region, clamped to +/-6)...")
         for band, (freq, g) in enumerate(zip(freqs, curve)):
             payload = bytes([band, (freq >> 8) & 0xFF, freq & 0xFF, g & 0xFF])
             out(f"  -> band {band} @ {freq} Hz gain {g:+d}")
@@ -436,7 +437,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--wait", type=float, default=1.0, help="seconds to wait for each reply")
 
     s = command("eq-test", "experimental: test whether the firmware applies a custom EQ (writes, then restores)", cmd_eq_test)
-    s.add_argument("--gain", type=int, default=12, help="boost in dB for the low bands (default 12)")
+    s.add_argument("--gain", type=int, default=4, help="bass boost in dB, clamped to +/-6 (default 4)")
     s.add_argument("--hold", type=float, help="seconds to hold the test EQ before restoring (default: wait for Enter)")
     s.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
 

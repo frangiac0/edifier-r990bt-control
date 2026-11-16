@@ -73,8 +73,7 @@ The write side exists too: `custom_eq_set` (`0x44`) sets one band live, and
 `custom_eq_switch` (`0x46`) saves/activates a full custom EQ (band data + a
 date stamp + a UTF-8 name). **Whether the DSP actually applies these writes
 is untested** — a command surface being present does not prove the audio is
-affected. This would need a careful, reversible test on real hardware
-(set a band with a large gain, listen, then restore a preset with `0xC4`).
+affected. **Confirmed on hardware:** sending custom_eq_set (0x44) per band changes the sound (each band ACKs with `01`), so the DSP applies it. The gain byte is signed dB; ConneX's sliders span about +/-6 dB and more clips the amplifier. Reselecting a preset with eq_set (0xC4) restores normal sound.
 
 Also confirmed readable: `time_off_query` (`0xD3`) = `00 00` (internal sleep
 timer, off). Not implemented on this unit (no reply): `bass_sound_level_query`,
