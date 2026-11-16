@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import queue
 import sys
+import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
 from dataclasses import asdict
 
-from . import autostart, config, keepalive, r990bt, web
+from . import __version__, autostart, config, keepalive, r990bt, updater, web
 from .controller import Controller, State
 from .i18n import t
 
@@ -106,7 +107,16 @@ class App:
         self.status_var = tk.StringVar(value=self._state.status)
         ttk.Label(frame, textvariable=self.status_var, style="Muted.TLabel", wraplength=300).pack(anchor="w", pady=(2, 14))
 
-        ttk.Label(frame, text=t("input"), style="Section.TLabel").pack(anchor="w")
+        # Shown only when a newer release is found.
+        self.update_bar = ttk.Frame(frame)
+        self.update_msg = tk.StringVar(value="")
+        ttk.Label(self.update_bar, textvariable=self.update_msg, wraplength=200).pack(side="left")
+        self.btn_update = ttk.Button(self.update_bar, text=t("update_now"), command=self._confirm_update)
+        self.btn_update.pack(side="right")
+        self._release = None
+
+        self.input_label = ttk.Label(frame, text=t("input"), style="Section.TLabel")
+        self.input_label.pack(anchor="w")
         row = ttk.Frame(frame)
         row.pack(fill="x", pady=(6, 16))
         self.source_var = tk.IntVar(value=-1)
@@ -265,6 +275,10 @@ class App:
                 elif kind == "keepalive":
                     enabled, level = data
                     self._set_keepalive(enabled, level)
+                elif kind == "update_checked":
+                    self._on_update_checked(*data)
+                elif kind == "update_installed":
+                    self._on_update_installed(data)
                 elif kind == "quit":
                     self._quit()
                     return
@@ -297,8 +311,86 @@ class App:
 
     # --- Settings, keep-alive and phone remote ---
 
+    # --- Updates ---
+
+    def _auto_check_updates(self) -> None:
+        if config.get("auto_update", True):
+            self._check_updates(manual=False)
+        self.root.after(24 * 3600 * 1000, self._auto_check_updates)
+
+    def _check_updates(self, manual: bool) -> None:
+        def work() -> None:
+            try:
+                result = updater.check()
+            except updater.UpdateError as e:
+                result = e
+            self._events.put(("update_checked", (result, manual)))
+
+        threading.Thread(target=work, name="update-check", daemon=True).start()
+
+    def _set_update_status(self, text: str) -> None:
+        win = self._settings_window
+        if win is not None and win.winfo_exists():
+            win._update_status.set(text)
+            win._update_btn.state(["!disabled"])
+
+    def _on_update_checked(self, result, manual: bool) -> None:
+        if isinstance(result, updater.UpdateError):
+            msg = t("update_not_public") if str(result) == "not_public" else t("update_error", error=result)
+            if manual:
+                self._set_update_status(msg)
+            return
+        if result is None:
+            if manual:
+                self._set_update_status(t("update_none", version=__version__))
+            return
+        self._release = result
+        text = t("update_available", version=result.version)
+        self._set_update_status(text)
+        self.update_msg.set(text)
+        if not self.update_bar.winfo_ismapped():
+            self.update_bar.pack(fill="x", pady=(0, 14), before=self.input_label)
+        if self._tray_visible() and not self.root.winfo_viewable() and not manual:
+            try:
+                self.tray.notify(text, "Edifier R990BT")
+            except Exception:
+                pass
+
+    def _confirm_update(self) -> None:
+        release = self._release
+        if release is None:
+            return
+        if not (updater.can_self_update() and release.asset_url):
+            updater.open_page(release.page_url)
+            return
+        if not messagebox.askyesno("Edifier R990BT", t("update_confirm", version=release.version), parent=self.root):
+            return
+        self.btn_update.state(["disabled"])
+        self.update_msg.set(t("update_downloading"))
+
+        def work() -> None:
+            try:
+                updater.install(release)
+                self._events.put(("update_installed", None))
+            except updater.UpdateError as e:
+                self._events.put(("update_installed", e))
+
+        threading.Thread(target=work, name="update-install", daemon=True).start()
+
+    def _on_update_installed(self, error) -> None:
+        if error is None:
+            self._quit(restart=True)
+            return
+        self.btn_update.state(["!disabled"])
+        self.update_msg.set(t("update_available", version=self._release.version))
+        if messagebox.askyesno("Edifier R990BT", t("update_failed", error=error), icon="warning", parent=self.root):
+            updater.open_page(self._release.page_url)
+
+    # --- Settings, keep-alive and phone remote ---
+
     def _restore_settings(self) -> None:
         autostart.refresh()
+        self.root.after(10_000, self._auto_check_updates)
         level = config.get("keepalive_level", keepalive.DEFAULT_LEVEL_DB)
         self._set_keepalive(bool(config.get("keepalive", False)), level, save=False)
         if config.get("web_enabled", False):
@@ -459,6 +551,26 @@ class App:
         close_check = ttk.Checkbutton(body, text=t("close_to_tray"), variable=close_var, command=apply_tray)
         close_check.pack(anchor="w", padx=(22, 0), pady=(4, 0))
         ttk.Label(body, text=t("app_hint"), style="Muted.TLabel", wraplength=320).pack(anchor="w", pady=(6, 0))
+
+        auto_var = tk.BooleanVar(value=bool(config.get("auto_update", True)))
+        ttk.Checkbutton(
+            body, text=t("auto_update"), variable=auto_var,
+            command=lambda: config.set_values(auto_update=auto_var.get()),
+        ).pack(anchor="w", pady=(12, 0))
+        urow = ttk.Frame(body)
+        urow.pack(fill="x", pady=(6, 0))
+        update_status = tk.StringVar(value=t("version", version=__version__))
+        ttk.Label(urow, textvariable=update_status, style="Muted.TLabel", wraplength=200).pack(side="left")
+
+        def check_now() -> None:
+            update_btn.state(["disabled"])
+            update_status.set(t("update_checking"))
+            self._check_updates(manual=True)
+
+        update_btn = ttk.Button(urow, text=t("update_check"), command=check_now)
+        update_btn.pack(side="right")
+        win._update_status = update_status
+        win._update_btn = update_btn
         if self.tray is None:
             for w in (tray_check, min_check, close_check):
                 w.state(["disabled"])
@@ -512,7 +624,10 @@ class App:
         else:
             self._quit()
 
-    def _quit(self) -> None:
+    def _quit(self, restart: bool = False) -> None:
+        if restart:
+            # The new copy waits for this one to exit before taking over.
+            updater.restart()
         self.keepalive.stop()
         if self.web:
             self.web.stop()
@@ -534,7 +649,7 @@ def self_test() -> int:
 
     from . import web  # noqa: F401
 
-    from . import autostart
+    from . import autostart, updater  # noqa: F401
 
     autostart.command()
     if sys.platform == "win32":
@@ -552,7 +667,9 @@ def main() -> None:
     if "--self-test" in sys.argv:
         sys.exit(self_test())
     events: queue.Queue = queue.Queue()
-    if not autostart.acquire_single_instance(lambda: events.put(("show", None))):
+    updater.cleanup()
+    wait = 30 if updater.UPDATED_FLAG in sys.argv else 0
+    if not autostart.acquire_single_instance(lambda: events.put(("show", None)), wait_s=wait):
         return  # the running copy shows its window
     App(start_minimized=autostart.MINIMIZED_FLAG in sys.argv, events=events).run()
 

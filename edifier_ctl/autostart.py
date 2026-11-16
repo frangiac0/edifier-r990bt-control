@@ -113,10 +113,12 @@ def refresh() -> None:
 _handles: list = []
 
 
-def acquire_single_instance(on_show) -> bool:
+def acquire_single_instance(on_show, wait_s: float = 0) -> bool:
     """Return True if this is the first instance. Then `on_show` is called
     from a background thread whenever another launch asks to be shown.
-    Return False if another instance was already running (it was signalled)."""
+    Return False if another instance was already running (it was signalled).
+    With `wait_s`, first wait that long for a running instance to exit
+    (used right after an update, while the old copy is closing)."""
     if sys.platform != "win32":
         return True
     import ctypes
@@ -129,7 +131,15 @@ def acquire_single_instance(on_show) -> bool:
     ERROR_ALREADY_EXISTS = 183
     EVENT_MODIFY_STATE = 0x0002
 
-    mutex = k32.CreateMutexW(None, False, _MUTEX_NAME)
+    import time
+
+    deadline = time.monotonic() + wait_s
+    while True:
+        mutex = k32.CreateMutexW(None, False, _MUTEX_NAME)
+        if not (mutex and ctypes.get_last_error() == ERROR_ALREADY_EXISTS) or time.monotonic() >= deadline:
+            break
+        k32.CloseHandle(mutex)
+        time.sleep(0.25)
     if mutex and ctypes.get_last_error() == ERROR_ALREADY_EXISTS:
         event = k32.OpenEventW(EVENT_MODIFY_STATE, False, _SHOW_EVENT_NAME)
         if event:

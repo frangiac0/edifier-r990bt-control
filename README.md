@@ -46,6 +46,8 @@ In **Settings... > App**:
 - **Show icon in the system tray:** an icon next to the clock whose menu switches inputs without opening the window.
 - **Minimize to the tray instead of the taskbar** and **Keep running in the tray when the window is closed:** off by default, so minimizing goes to the taskbar and closing the window quits the app. With the second one on, use **Quit** in the tray menu to exit.
 
+- **Check for updates automatically:** on by default. The app checks the latest GitHub release at startup and once a day; when there is a newer version, a bar in the main window offers to download it, replace the exe and restart. **Check now** does it on demand. This needs the releases to be public. It updates the app exe only; download `edifier-cli.exe` again by hand if you use it.
+
 The phone remote and auto-mute prevention only work while the app is running. Only one copy runs at a time: opening it again while it is running brings up its window.
 
 The first time, the app searches for the speaker and saves its address in `%APPDATA%\edifier-r990bt-control\config.json`. Delete that file to pair the app with a different speaker.
