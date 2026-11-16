@@ -16,6 +16,7 @@ Requirements: Windows 10 or 11 with Bluetooth 4.0 or later. Most laptops have it
 
 ## Using the app
 
+- **Connect audio (Win+K):** opens the Windows panel to connect this PC to the speaker as a Bluetooth audio device (same as pressing `Win + K`).
 - **Input:** Bluetooth, Line 1, Line 2.
 - **Volume:** slider and `-` / `+` buttons (0 to 16, the speaker's own scale).
 - **EQ:** the speaker's three presets: Music, Movie and Game.

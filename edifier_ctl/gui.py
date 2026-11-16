@@ -43,6 +43,18 @@ def make_icon_image(size: int = 64):
     return img
 
 
+def open_connect_flyout() -> None:
+    """Press Win+K, which opens the Windows panel to connect wireless audio devices."""
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    VK_LWIN, VK_K, KEYUP = 0x5B, 0x4B, 0x0002
+    user32.keybd_event(VK_LWIN, 0, 0, 0)
+    user32.keybd_event(VK_K, 0, 0, 0)
+    user32.keybd_event(VK_K, 0, KEYUP, 0)
+    user32.keybd_event(VK_LWIN, 0, KEYUP, 0)
+
+
 class App:
     def __init__(self, start_minimized: bool = False, events: queue.Queue | None = None) -> None:
         self.root = tk.Tk()
@@ -86,7 +98,11 @@ class App:
         frame = ttk.Frame(self.root, padding=(20, 16, 20, 18))
         frame.pack(fill="both", expand=True)
 
-        ttk.Label(frame, text="Edifier R990BT", style="Title.TLabel").pack(anchor="w")
+        title = ttk.Frame(frame)
+        title.pack(fill="x")
+        ttk.Label(title, text="Edifier R990BT", style="Title.TLabel").pack(side="left")
+        if sys.platform == "win32":
+            ttk.Button(title, text=t("connect_audio"), command=open_connect_flyout).pack(side="right")
         self.status_var = tk.StringVar(value=self._state.status)
         ttk.Label(frame, textvariable=self.status_var, style="Muted.TLabel", wraplength=300).pack(anchor="w", pady=(2, 14))
 
