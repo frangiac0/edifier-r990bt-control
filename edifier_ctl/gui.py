@@ -469,7 +469,7 @@ class App:
             scale.pack()
             scale.bind("<ButtonPress-1>", lambda e: setattr(self, "_dragging_band", True))
             scale.bind("<ButtonRelease-1>", lambda e: (setattr(self, "_dragging_band", False), self._apply_bands()))
-            label = "12k" if hz >= 1000 and hz % 1000 == 0 else (f"{hz // 1000}k" if hz >= 1000 else str(hz))
+            label = f"{hz // 1000}k" if hz >= 1000 else str(hz)
             ttk.Label(col, text=label, style="Muted.TLabel").pack()
             self.band_vars.append(var)
             self.band_scales.append(scale)
