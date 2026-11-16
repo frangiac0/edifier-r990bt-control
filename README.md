@@ -25,7 +25,7 @@ Requirements: Windows 10 or 11 with Bluetooth 4.0 or later. Most laptops have it
 
 The R990BT switches its amplifier off when the audio stream stops or the signal drops below a very low level, and switches it back on when sound returns. In films this cuts quiet ambience and the start of sounds after a silence.
 
-**Prevent auto-mute** makes the app play a 25 Hz tone at -60, -50 or -40 dBFS through the default Windows output. That is practically inaudible but keeps the stream alive and the amplifier on. Start with -50 dB and go up only if the speaker still mutes.
+**Prevent auto-mute** makes the app play a 25 Hz tone at -60, -50 or -40 dBFS through the default Windows output. The speaker's rated frequency response starts at 60 Hz, so the tone is practically inaudible, but it keeps the stream alive and the amplifier on. Start with -50 dB and go up only if the speaker still mutes.
 
 It only affects audio played by this PC, over Bluetooth or a PC-to-RCA cable. It cannot help a TV or other device plugged into the RCA inputs, because the PC has no way to inject a signal into that cable.
 
@@ -44,6 +44,7 @@ The interface is in English, or in Spanish when Windows is set to Spanish. Set t
 ### Tips
 
 - **Close ConneX on your phone.** The speaker accepts only one control connection at a time.
+- **Bluetooth hidden mode.** According to the manual, if no Bluetooth audio device connects for 30 minutes the speaker enters a hidden mode (blue LED breathing). If the app cannot find the speaker, press the knob once to leave that mode.
 - **The speaker advertises intermittently.** If the app can't find it the first time, play something over Bluetooth for a few seconds. Once found, the app remembers it and reconnects on its own.
 
 ## Command-line tool
@@ -119,7 +120,7 @@ After an input change the speaker also sends `0xC3` notifications with the state
 
 ### Power and standby
 
-`0xCE` turns the speaker off. Once off, it stops advertising over BLE and cannot be reached, and reconnecting Bluetooth audio from Windows does not wake it. It has to be turned back on with the rear knob, so the speaker can be switched off from the PC but not on.
+`0xCE` puts the speaker in standby, the same as holding the knob (the manual calls it standby mode). Once off, it stops advertising over BLE and cannot be reached, and reconnecting Bluetooth audio from Windows does not wake it. It has to be turned back on with the rear knob, so the speaker can be switched off from the PC but not on.
 
 Capabilities payload on the tested unit:
 
