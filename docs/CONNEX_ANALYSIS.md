@@ -60,6 +60,27 @@ EQ profile 15 has three presets. ConneX lists them in this order:
 | `0xCB`, `0xD1` | Drop the BLE control link when sent with no payload | Discovered by probing; the speaker reconnects on its own. Not probed by default |
 | `0xF0` / `0xF1` | `tap_query` / `tap_set` (control-setting bus) | Payload byte 0 selects the sub-setting; a probe saw sub-setting `0x87` (`tip_beep`) = `0`. `0xF1` writes. Most sub-settings are headphone features |
 
+### Custom EQ: the firmware exposes it (contradicts the ConneX UI)
+
+Probing the R990BT, `custom_eq_query` (`0x43`) replies with 26 bytes:
+`02 06` followed by 24 zeros. Decoded with ConneX's `getBasicFreqByEqIndex`,
+this is EQ type 2: **6 bands of 4 bytes each** (`band index`, `freq` high,
+`freq` low, `gain`), currently all flat. So the speaker's DSP command surface
+has a 6-band parametric custom EQ, even though the ConneX UI for this model
+only offers the three fixed presets (Music/Movie/Game).
+
+The write side exists too: `custom_eq_set` (`0x44`) sets one band live, and
+`custom_eq_switch` (`0x46`) saves/activates a full custom EQ (band data + a
+date stamp + a UTF-8 name). **Whether the DSP actually applies these writes
+is untested** — a command surface being present does not prove the audio is
+affected. This would need a careful, reversible test on real hardware
+(set a band with a large gain, listen, then restore a preset with `0xC4`).
+
+Also confirmed readable: `time_off_query` (`0xD3`) = `00 00` (internal sleep
+timer, off). Not implemented on this unit (no reply): `bass_sound_level_query`,
+`d2dp_volume_query`, `auto_shutdown_without_audio_query`, `device_state_query`,
+`led_state_query`.
+
 ### Full opcode dictionary
 
 The complete command table was recovered from ConneX (`CommandIndex`) and is stored in `edifier_ctl/opcodes.py` (179 opcodes with their names). Names ending in `_query` read state; the rest write, pair, update firmware, log or reset. Only a subset applies to the R990BT. This is what lets the `probe` command send read-only opcodes exclusively, and it corrected two earlier guesses: `0xC7` is `clear_pairing_record` (not a status read) and `0xC8` is `mac_query`.
