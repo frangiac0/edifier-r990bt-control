@@ -1,79 +1,81 @@
 # edifier-r990bt-control
 
-Control an **Edifier R990BT** speaker from a Windows PC over Bluetooth LE: switch inputs (Bluetooth, Line 1, Line 2), change the volume and pick an EQ preset without touching the rear knob or the phone app.
+Control an **Edifier R990BT** speaker from a Windows PC over Bluetooth LE: input, volume, EQ and more, without touching the rear knob or the phone app.
 
-> Unofficial project, not affiliated with Edifier. It uses an undocumented protocol, reverse-engineered by the community from the EDIFIER ConneX app. Use at your own risk.
+> Unofficial project, not affiliated with Edifier. It uses an undocumented protocol, reverse-engineered from the EDIFIER ConneX app. Use at your own risk.
 
-![App window](assets/screenshot.png)
+<p>
+  <img src="assets/screenshot.png" alt="Main window" height="520">
+  <img src="assets/settings.png" alt="Settings" height="520">
+</p>
 
 ## Download
 
-Grab `EdifierR990BT.exe` from the [latest release](../../releases/latest) and double-click it. No installation and no Python needed.
+Get `EdifierR990BT.exe` from the [latest release](../../releases/latest) and run it. No installation and no Python needed; the app updates itself afterwards.
 
-Windows SmartScreen may warn that the app is from an unknown publisher, because the executable is not code-signed. Click **More info > Run anyway**.
+Requires Windows 10 or 11 with Bluetooth 4.0 or later. The exe is not code-signed, so SmartScreen may ask for **More info > Run anyway**.
 
-Requirements: Windows 10 or 11 with Bluetooth 4.0 or later. Most laptops have it; desktop PCs may need a USB adapter.
+## Features
 
-## Using the app
-
-- **Connect audio (Win+K):** opens the Windows panel to connect this PC to the speaker as a Bluetooth audio device (same as pressing `Win + K`).
 - **Input:** Bluetooth, Line 1, Line 2.
-- **Volume:** slider and `-` / `+` buttons (0 to 16, the speaker's own scale).
-- **EQ:** the speaker's three presets: Music, Movie and Game.
-- **Settings...:** rename the speaker (up to 30 characters), turn the Bluetooth connection prompt tone on or off, and set how the app starts, minimizes and closes (see below).
-- **Pair new device:** disconnects the current Bluetooth audio device and leaves the speaker in pairing mode (blue LED blinking), like holding its Bluetooth button. The app loses the speaker for a minute or two and then reconnects by itself. To reconnect a Windows PC afterwards, press `Win + K` and pick the speaker.
-- **Turn off:** powers the speaker down. It can only be turned back on with its knob; the app reconnects by itself when it is.
+- **Volume** (0 to 16, the speaker's own scale) and **EQ presets:** Music, Movie, Game.
+- **Connect audio (Win+K):** opens the Windows panel to connect the PC to the speaker over Bluetooth.
+- **Pair new device:** drops the current audio device and puts the speaker in pairing mode. The app reconnects by itself in a minute or two.
+- **Turn off:** standby. It can only be turned back on with the knob.
+- **Prevent auto-mute** for audio played from the PC.
+- **Phone remote** over Wi-Fi, opened by scanning a QR code.
+- **Settings:** speaker name, connection prompt tone, start with Windows, tray icon, minimize and close behaviour, automatic updates.
+- **Command-line tool** for scripts and hotkeys.
 
-### Prevent auto-mute
+Interface in English, or Spanish when Windows is in Spanish.
 
-The R990BT switches its amplifier off when the audio stream stops or the signal drops below a very low level, and switches it back on when sound returns. In films this cuts quiet ambience and the start of sounds after a silence.
+The speaker itself has limits that no app can lift: its auto-mute is fixed in firmware, there is no custom EQ (only the three presets) and it cannot be turned on remotely. See [what the speaker exposes](docs/CONNEX_ANALYSIS.md).
 
-**Prevent auto-mute** makes the app play a 25 Hz tone at -60, -50 or -40 dBFS through the default Windows output. The speaker's rated frequency response starts at 60 Hz, so the tone is practically inaudible, but it keeps the stream alive and the amplifier on. Start with -50 dB and go up only if the speaker still mutes.
+## Details
 
-It only affects audio played by this PC, over Bluetooth or a PC-to-RCA cable. It cannot help a TV or other device plugged into the RCA inputs, because the PC has no way to inject a signal into that cable.
-
-### Phone remote
-
-Tick **Allow control from a phone on this Wi-Fi** and press **Show QR**. Scanning the code opens a page with the same controls on the phone. The PC must be on with the app running.
-
-The link includes a random access key, so other devices on the network cannot use it without the QR. The server listens on port 8765. The first time, Windows asks whether to allow the app on the network: allow it on **private** networks.
-
-### Start with Windows, tray and closing
-
-In **Settings... > App**:
-
-- **Start with Windows (minimized):** the app starts when you sign in, minimized to the taskbar, or hidden in the tray if *Minimize to the tray* is on. It is a per-user entry under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, so it needs no admin rights, and it also shows up in **Task Manager > Startup apps**, where it can be turned off too. If you move the exe, open it once from the new folder and the entry follows it.
-- **Show icon in the system tray:** an icon next to the clock whose menu switches inputs without opening the window.
-- **Minimize to the tray instead of the taskbar** and **Keep running in the tray when the window is closed:** off by default, so minimizing goes to the taskbar and closing the window quits the app. With the second one on, use **Quit** in the tray menu to exit.
-
-- **Check for updates automatically:** on by default. The app checks the latest GitHub release at startup and once a day; when there is a newer version, a bar in the main window offers to download it, replace the exe and restart. **Check now** does it on demand. This needs the releases to be public. It updates the app exe only; download `edifier-cli.exe` again by hand if you use it.
-
-The phone remote and auto-mute prevention only work while the app is running. Only one copy runs at a time: opening it again while it is running brings up its window.
-
-The first time, the app searches for the speaker and saves its address in `%APPDATA%\edifier-r990bt-control\config.json`. Delete that file to pair the app with a different speaker.
-
-The interface is in English, or in Spanish when Windows is set to Spanish. Set the environment variable `EDIFIER_LANG=en` or `EDIFIER_LANG=es` to force a language.
-
-### Tips
+<details>
+<summary><b>If the app can't find the speaker</b></summary>
 
 - **Close ConneX on your phone.** The speaker accepts only one control connection at a time.
-- **Bluetooth hidden mode.** According to the manual, if no Bluetooth audio device connects for 30 minutes the speaker enters a hidden mode (blue LED breathing). If the app cannot find the speaker, press the knob once to leave that mode.
-- **The speaker advertises intermittently.** If the app can't find it the first time, play something over Bluetooth for a few seconds. Once found, the app remembers it and reconnects on its own.
+- **Hidden mode.** After 30 minutes without a Bluetooth audio device the speaker hides (blue LED breathing). Press the knob once.
+- **Intermittent advertising.** Play something over Bluetooth for a few seconds. Once found, the app remembers the speaker and reconnects on its own.
 
-## Command-line tool
+The address is saved in `%APPDATA%\edifier-r990bt-control\config.json`. Delete that file to use the app with a different speaker.
+</details>
 
-`edifier-cli.exe`, also in the release, does the same from a terminal, which makes it easy to call from scripts, AutoHotkey, Stream Deck and the like:
+<details>
+<summary><b>Prevent auto-mute</b></summary>
+
+The R990BT switches its amplifier off when the signal stops or drops very low, and back on when sound returns, which cuts quiet ambience and the start of sounds in films. The app can play a 25 Hz tone at -60, -50 or -40 dBFS through the default Windows output: below the speaker's 60 Hz range, so practically inaudible, but enough to keep the amplifier on. Start with -50 dB.
+
+It only works for audio played by this PC (Bluetooth or a PC-to-RCA cable), not for a TV or other device on the RCA inputs.
+</details>
+
+<details>
+<summary><b>Phone remote</b></summary>
+
+Tick **Allow control from a phone on this Wi-Fi** and press **Show QR**. The page has the same controls and works while the app is running. The link carries a random key, so other devices on the network can't use it without the QR. Port 8765; when Windows asks, allow the app on **private** networks. In Brave, turn off forced HTTPS for the page.
+</details>
+
+<details>
+<summary><b>Start with Windows, tray and updates</b></summary>
+
+All in **Settings... > App**:
+
+- **Start with Windows** adds a per-user entry (`HKCU\...\CurrentVersion\Run`, no admin rights), also listed in Task Manager > Startup apps. The app starts minimized.
+- **Tray icon:** quick input switching from the menu next to the clock. Optionally, minimize and/or close to the tray. By default minimizing goes to the taskbar and closing quits.
+- **Updates:** checked at startup and once a day against the latest GitHub release. A bar in the window offers to download, replace the exe and restart. It updates the app only, not `edifier-cli.exe`.
+
+Only one copy runs at a time: opening it again brings up the running window.
+</details>
+
+<details>
+<summary><b>Command-line tool</b></summary>
+
+`edifier-cli.exe`, also in the release, for scripts, AutoHotkey, Stream Deck and the like:
 
 ```bash
 edifier-cli source line1
-```
-
-```bash
-edifier-cli volume +2
-```
-
-```bash
-edifier-cli eq movie
 ```
 
 | Command | What it does |
@@ -93,60 +95,10 @@ edifier-cli eq movie
 | `forget` | Forget the saved speaker |
 
 Every command appends its output to `diagnostics.txt` in the current folder. Remove Bluetooth addresses before sharing that file.
+</details>
 
-## How it works
-
-The speaker has two independent Bluetooth radios:
-
-- **Classic Bluetooth (A2DP)** carries the audio.
-- **Bluetooth LE** carries control commands. This is what ConneX, and this app, use.
-
-Commands are framed like this:
-
-```text
-AA EC <opcode> <length: 2 bytes> <payload> <checksum>    request
-BB EC <opcode> <length: 2 bytes> <payload> <checksum>    reply
-```
-
-The checksum is the low byte of the sum of all preceding bytes.
-
-### R990BT protocol reference
-
-Verified on an R990BT with firmware 1.0.2. Each change was set, acknowledged and read back.
-
-| | Value |
-|---|---|
-| BLE name | `EDIFIER BLE` |
-| Advertised UUID | `0000d300-0000-1000-8000-00805f9b34fb` |
-| GATT service | `4809d301-1a48-11e9-ab14-d663bd873d93` |
-| Notify characteristic | `48090001-1a48-11e9-ab14-d663bd873d93` |
-| Write characteristic | `48090002-1a48-11e9-ab14-d663bd873d93` |
-
-| Function | Query | Set | Values |
-|---|---|---|---|
-| Input | `AA EC 61 00 00 F7` → `<group> <input>` | `AA EC 62 00 02 06 <input> <chk>` | group `06`; `01` Bluetooth, `02` Line 1, `03` Line 2 |
-| Volume | `AA EC 66 00 00 FC` → `<max> <current>` | `AA EC 67 00 01 <vol> <chk>` | 0 to 16 |
-| EQ preset | `AA EC D5 00 00 6B` → `<preset>` | `AA EC C4 00 01 <preset> <chk>` | `00` Music, `02` Movie, `01` Game |
-| Name | `AA EC C9 00 00 5F` | `AA EC CA <len> <UTF-8 name> <chk>` | up to 30 bytes |
-| Prompt tone | `AA EC F9 00 00 8F` → `<state>` | `AA EC FA 00 01 <state> <chk>` | `00` off, `01` on |
-| Firmware | `AA EC C6 00 00 5C` | | 3 bytes |
-| Capabilities | `AA EC D8 00 00 6E` | | 22 bytes |
-| Power off | | `AA EC CE 00 00 64` | no reply; the speaker turns off |
-| Disconnect audio | | `AA EC CD 00 00 63` | no reply; pairing mode, BLE drops for 1-2 min |
-
-After an input change the speaker also sends `0xC3` notifications with the state of the Bluetooth audio link.
-
-### Power and standby
-
-`0xCE` puts the speaker in standby, the same as holding the knob (the manual calls it standby mode). Once off, it stops advertising over BLE and cannot be reached, and reconnecting Bluetooth audio from Windows does not wake it. It has to be turned back on with the rear knob, so the speaker can be switched off from the PC but not on.
-
-Capabilities payload on the tested unit:
-
-```text
-00 00 01 02 01 01 01 00 00 00 01 01 0A 0F 01 00 00 22 00 03 00 00
-```
-
-## Running from source
+<details>
+<summary><b>Running from source and building</b></summary>
 
 Requires Python 3.10 or later.
 
@@ -166,7 +118,7 @@ Use the command-line tool:
 py -m edifier_ctl info
 ```
 
-### Building the executables
+**Building the executables.**
 
 GitHub Actions builds both executables on every push and attaches them to a release when a `v*` tag is pushed. To build locally on Windows:
 
@@ -175,14 +127,13 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 ```
 
 The output lands in `dist\`.
+</details>
 
-## What else the speaker supports
+## Technical documentation
 
-An analysis of the ConneX app shows exactly which features the R990BT exposes and confirms there is no setting for its auto-mute. See [docs/CONNEX_ANALYSIS.md](docs/CONNEX_ANALYSIS.md).
-
-## Other Edifier speakers
-
-The control service of ConneX speakers follows the pattern `4809xxxx-1a48-11e9-ab14-d663bd873d93`, so the scan, info and watch commands may work on other models. Input and EQ codes differ per model: run `watch` and turn the knob to find them. If the speaker doesn't answer at all, [docs/ANDROID_CAPTURE.md](docs/ANDROID_CAPTURE.md) explains how to capture what ConneX sends.
+- [docs/PROTOCOL.md](docs/PROTOCOL.md): BLE protocol, command table, other Edifier models.
+- [docs/CONNEX_ANALYSIS.md](docs/CONNEX_ANALYSIS.md): what the ConneX app exposes for this speaker.
+- [docs/ANDROID_CAPTURE.md](docs/ANDROID_CAPTURE.md): capturing ConneX traffic for other models.
 
 ## Credits
 
