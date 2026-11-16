@@ -26,7 +26,7 @@ from edifier_ctl.controller import State  # noqa: E402
 from edifier_ctl.i18n import t  # noqa: E402
 
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else "screenshots")
-config.set_values(auto_update=False, tray_icon=True)
+config.set_values(tray_icon=True)  # the update check starts after 10 s, past the capture
 
 
 class FakeController:
