@@ -22,9 +22,14 @@ if ($p.ExitCode -ne 0) { throw "Self-test failed with exit code $($p.ExitCode)" 
 $marker = Join-Path $env:RUNNER_TEMP "restart-ok.txt"
 if (-not $env:RUNNER_TEMP) { $marker = Join-Path $env:TEMP "restart-ok.txt" }
 Remove-Item $marker -ErrorAction SilentlyContinue
-Start-Process -FilePath "dist\EdifierR990BT.exe" -ArgumentList "--self-test-restart", "`"$marker`"" -Wait
+# (-Wait would also wait for the child, which hangs on an error dialog if it fails.)
+$p = Start-Process -FilePath "dist\EdifierR990BT.exe" -ArgumentList "--self-test-restart", "`"$marker`"" -PassThru
+$p.WaitForExit()
 for ($i = 0; $i -lt 40 -and -not (Test-Path $marker); $i++) { Start-Sleep -Milliseconds 500 }
-if (-not (Test-Path $marker)) { throw "Restarted copy failed to start" }
+if (-not (Test-Path $marker)) {
+  Get-Process EdifierR990BT -ErrorAction SilentlyContinue | Stop-Process -Force
+  throw "Restarted copy failed to start"
+}
 Write-Host "restart OK"
 
 # Toggle the per-user startup entry on the build machine and check it round-trips.
